@@ -8,4 +8,5 @@ authors = [
 readme = "README.md"
 requires-python = ">=3.9"
 dependencies = [
+    "icecream (>=2.1.5,<3.0.0)"
 ]

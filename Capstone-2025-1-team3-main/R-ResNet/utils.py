@@ -18,7 +18,7 @@ from torch.optim import SGD, Adam, AdamW
 from tqdm import tqdm
 
 from models.recur_resnet_segment import recur_resnet 
-from models.resnet_segment import ff_resnet
+# from models.resnet_segment import ff_resnet
 from models.recur_resnet_act import RecurResNetACT, BasicBlock 
 
 def get_dataloaders(train_batch_size, test_batch_size, train_maze_size=9, test_maze_size=9, shuffle=True):

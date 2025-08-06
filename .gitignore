@@ -1,0 +1,8 @@
+# 환경 설정 파일
+.venv
+
+# Python 캐시 파일
+**/__pycache__/
+
+# 데이터
+data/

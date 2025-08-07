@@ -259,7 +259,8 @@ def train_default(net, trainloader, optimizer_obj, device):
 
         # acc는 결과 이미지가 같냐 : 해당 Maze input의 경로를 제대로 맞췄냐 아니냐
         targets = targets.squeeze(1)
-        predicted = outputs.argmax(1) * inputs.max(1)[0]
+#         predicted = outputs.argmax(1) * inputs.max(1)[0]
+        predicted = outputs.argmax(1)
         correct += torch.amin(predicted == targets, dim=[1, 2]).sum().item()
         total += targets.size(0)
 

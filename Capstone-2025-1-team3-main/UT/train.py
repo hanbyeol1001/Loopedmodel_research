@@ -143,6 +143,13 @@ def main():
     else:
         print("Warning: best_model_state와 model_path 모두 없습니다. 랜덤 파라미터로 테스트합니다.")
     
+    # ===== debug 코드 시작 =====
+    batch = next(iter(trainloader))
+    inputs, targets = batch
+    print("DEBUG inputs.shape: ", inputs.shape)
+    print("DEBUG targets.shape: ", targets.shape)
+    print("DEBUG unique labels: ", torch.unique(targets))
+    # ===== debug 코드 끝 =====
 
     for epoch in range(start_epoch, args.epochs):
         loss, acc = train(net, trainloader, args.train_mode, optimizer_obj, device)

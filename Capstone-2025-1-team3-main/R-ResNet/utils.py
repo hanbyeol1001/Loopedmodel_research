@@ -373,32 +373,38 @@ def train(net, trainloader, mode, optimizer_obj, device):
 
 
 def train_default(net, trainloader, optimizer_obj, device):
-
-    net.train()
-    net = net.to(device)
+    # 초기 설정
+    net.train()  # 모델을 학습 모드로 전환
+    net = net.to(device)  # GPU 또는 CPU로 모델 이동
+    # 옵티마이저와 학습률 스케줄러를 받아옴.
     optimizer = optimizer_obj.optimizer
     lr_scheduler = optimizer_obj.scheduler
     warmup_scheduler = optimizer_obj.warmup
 
-    criterion = torch.nn.CrossEntropyLoss(reduction="none")
-    time_penalty = net.time_penalty  # 조정 가능한 시간 패널티 계수
+    criterion = torch.nn.CrossEntropyLoss(reduction="none")  # 픽셀 단위 손실 계산 가능.
+    time_penalty = net.time_penalty  # 조정 가능한 시간 패널티 계수(수식에서 람다 역할)
     
+    # 손실, 정확도, 픽셀 수, ponder cost 누적을 위한 변수 초기화
     train_loss = 0
     correct = 0
     total = 0
     total_pixels = 0
     total_ponder_cost = 0  # Ponder cost 추적 추가
     
+    # 미니배치 루프
     torch.set_printoptions(profile="full")
 
     for batch_idx, (inputs, targets) in enumerate(tqdm(trainloader, leave=False)):
+        # unsqueeze(1) → Segmentation처럼 (B,1,H,W) 형태로 만듦
         inputs, targets = inputs.to(device), targets.to(device).unsqueeze(1).long()
         optimizer.zero_grad()
         
+        # 모델 forward
         weighted_output, avg_ponder_cost = net(inputs)
 
         # 출력 형태 재구성
         n, c, h, w = weighted_output.size()
+        # (B, C, H, W) → (B*H*W, C)
         reshaped_outputs = weighted_output.permute(0, 2, 3, 1).contiguous().view(-1, c)
         
         # 유효 픽셀 마스킹 
@@ -419,7 +425,7 @@ def train_default(net, trainloader, optimizer_obj, device):
         total_loss = task_loss + time_penalty * avg_ponder_cost
         total_loss.backward()
         
-        # 그래디언트 클리핑 추가
+        # 그래디언트 클리핑 추가: 폭발 방지 (max norm = 1.0)
         torch.nn.utils.clip_grad_norm_(net.parameters(), 1.0)
         optimizer.step()
 

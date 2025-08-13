@@ -9,6 +9,12 @@ import os
 import sys
 from dataclasses import dataclass
 import math
+
+# If running headless or MPLBACKEND is set to a Jupyter-only backend, force Agg
+if not os.environ.get("DISPLAY") or os.environ.get("MPLBACKEND", "").startswith("module://"):
+    os.environ["MPLBACKEND"] = "Agg"
+
+import matplotlib  # safe now: reads MPLBACKEND=Agg
 import matplotlib.pyplot as plt
 from matplotlib.colors import LinearSegmentedColormap
 

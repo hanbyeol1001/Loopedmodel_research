@@ -237,15 +237,6 @@ def train_default(net, trainloader, optimizer_obj, device):
     for batch_idx, (inputs, targets) in enumerate(tqdm(trainloader, leave=False)):
         inputs, targets = inputs.to(device), targets.to(device).unsqueeze(1).long()
         optimizer.zero_grad()
-        # train() 내부, 첫 배치에서
-        if batch_idx == 0:
-            with torch.no_grad():
-                dbg_logits = net(inputs)  # 또는 현재 미니배치의 forward 결과
-                dbg_acc = safe_pixel_accuracy(dbg_logits, targets,
-                                            num_classes=dbg_logits.shape[1],
-                                            ignore_index=-1, debug=True)
-                print(f"[TRAIN DEBUG] first-batch acc: {dbg_acc:.4f}")
-
         
         outputs = net(inputs)
 
@@ -276,8 +267,21 @@ def train_default(net, trainloader, optimizer_obj, device):
         # acc는 결과 이미지가 같냐 : 해당 Maze input의 경로를 제대로 맞췄냐 아니냐
         targets = targets.squeeze(1)
 #         predicted = outputs.argmax(1) * inputs.max(1)[0]
+        
+        # [디버그용] 안전하게, 모양 보정 + 예외 무시
+        if batch_idx == 0:
+            with torch.no_grad():
+                _t = targets if targets.dim() == 3 else targets.squeeze(1)
+                try:
+                    dbg_acc = safe_pixel_accuracy(outputs, _t, ignore_index=None, debug=True)
+                    print(f"[DEBUG] pixel-acc(first batch): {dbg_acc:.4f}")
+                except Exception as e:
+                    print(f"[DEBUG] safe_pixel_accuracy skipped: {e}")
+        
         predicted = outputs.argmax(1)
-        correct += torch.amin(predicted == targets, dim=[1, 2]).sum().item()
+#         correct += torch.amin(predicted == targets, dim=[1, 2]).sum().item()
+        batch_pix_acc = (predicted == targets).float().mean().item()
+        correct += batch_pix_acc
         total += targets.size(0)
 
     train_loss = train_loss / total_pixels

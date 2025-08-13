@@ -237,6 +237,16 @@ def train_default(net, trainloader, optimizer_obj, device):
     for batch_idx, (inputs, targets) in enumerate(tqdm(trainloader, leave=False)):
         inputs, targets = inputs.to(device), targets.to(device).unsqueeze(1).long()
         optimizer.zero_grad()
+        # train() 내부, 첫 배치에서
+        if batch_idx == 0:
+            with torch.no_grad():
+                dbg_logits = net(inputs)  # 또는 현재 미니배치의 forward 결과
+                dbg_acc = safe_pixel_accuracy(dbg_logits, targets,
+                                            num_classes=dbg_logits.shape[1],
+                                            ignore_index=-1, debug=True)
+                print(f"[TRAIN DEBUG] first-batch acc: {dbg_acc:.4f}")
+
+        
         outputs = net(inputs)
 
         n, c, h, w = outputs.size()
@@ -378,3 +388,49 @@ def test_max_conf(net, testloader, device):
 
     accuracy = 100.0 * correct / total
     return accuracy
+
+
+@torch.no_grad()
+def safe_pixel_accuracy(logits, targets, num_classes=None, ignore_index=-1, debug=False):
+    """
+    logits: [N,C,H,W] (raw scores)
+    targets: [N,H,W] (class indices, long)
+    """
+    if logits.dim() != 4:
+        raise ValueError(f"Expected logits [N,C,H,W], got {tuple(logits.shape)}")
+    if targets.dim() != 3:
+        raise ValueError(f"Expected targets [N,H,W], got {tuple(targets.shape)}")
+
+    C = logits.shape[1]
+    if num_classes is not None and num_classes != C:
+        # 모델 기준으로 맞춰줌
+        num_classes = C
+    elif num_classes is None:
+        num_classes = C
+
+    preds = logits.argmax(dim=1)  # [N,H,W]
+    targets = targets.long()
+
+    if ignore_index is not None:
+        mask = (targets != ignore_index)
+    else:
+        mask = torch.ones_like(targets, dtype=torch.bool)
+
+    valid = mask.sum().item()
+    if valid == 0:
+        # 전부 ignore면 0.0 반환 (여기서 0이 나오는지 확인)
+        if debug:
+            print("[DEBUG] All pixels ignored in this batch.")
+        return 0.0
+
+    correct = (preds[mask] == targets[mask]).sum().item()
+    acc = correct / valid
+
+    if debug:
+        pu = torch.unique(preds[mask]).tolist()
+        tu = torch.unique(targets[mask]).tolist()
+        print(f"[DEBUG] preds unique: {pu}")
+        print(f"[DEBUG] targets unique: {tu}")
+        print(f"[DEBUG] batch acc: {acc:.4f}")
+
+    return acc

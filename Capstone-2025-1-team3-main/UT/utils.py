@@ -9,6 +9,12 @@ import os
 import sys
 from dataclasses import dataclass
 import math
+
+# If running headless or MPLBACKEND is set to a Jupyter-only backend, force Agg
+if not os.environ.get("DISPLAY") or os.environ.get("MPLBACKEND", "").startswith("module://"):
+    os.environ["MPLBACKEND"] = "Agg"
+
+import matplotlib  # safe now: reads MPLBACKEND=Agg
 import matplotlib.pyplot as plt
 from matplotlib.colors import LinearSegmentedColormap
 
@@ -231,6 +237,7 @@ def train_default(net, trainloader, optimizer_obj, device):
     for batch_idx, (inputs, targets) in enumerate(tqdm(trainloader, leave=False)):
         inputs, targets = inputs.to(device), targets.to(device).unsqueeze(1).long()
         optimizer.zero_grad()
+        
         outputs = net(inputs)
 
         n, c, h, w = outputs.size()
@@ -259,8 +266,22 @@ def train_default(net, trainloader, optimizer_obj, device):
 
         # acc는 결과 이미지가 같냐 : 해당 Maze input의 경로를 제대로 맞췄냐 아니냐
         targets = targets.squeeze(1)
-        predicted = outputs.argmax(1) * inputs.max(1)[0]
-        correct += torch.amin(predicted == targets, dim=[1, 2]).sum().item()
+#         predicted = outputs.argmax(1) * inputs.max(1)[0]
+        
+        # [디버그용] 안전하게, 모양 보정 + 예외 무시
+        if batch_idx == 0:
+            with torch.no_grad():
+                _t = targets if targets.dim() == 3 else targets.squeeze(1)
+                try:
+                    dbg_acc = safe_pixel_accuracy(outputs, _t, ignore_index=None, debug=True)
+                    print(f"[DEBUG] pixel-acc(first batch): {dbg_acc:.4f}")
+                except Exception as e:
+                    print(f"[DEBUG] safe_pixel_accuracy skipped: {e}")
+        
+        predicted = outputs.argmax(1)
+#         correct += torch.amin(predicted == targets, dim=[1, 2]).sum().item()
+        batch_pix_acc = (predicted == targets).float().mean().item()
+        correct += batch_pix_acc
         total += targets.size(0)
 
     train_loss = train_loss / total_pixels
@@ -371,3 +392,49 @@ def test_max_conf(net, testloader, device):
 
     accuracy = 100.0 * correct / total
     return accuracy
+
+
+@torch.no_grad()
+def safe_pixel_accuracy(logits, targets, num_classes=None, ignore_index=-1, debug=False):
+    """
+    logits: [N,C,H,W] (raw scores)
+    targets: [N,H,W] (class indices, long)
+    """
+    if logits.dim() != 4:
+        raise ValueError(f"Expected logits [N,C,H,W], got {tuple(logits.shape)}")
+    if targets.dim() != 3:
+        raise ValueError(f"Expected targets [N,H,W], got {tuple(targets.shape)}")
+
+    C = logits.shape[1]
+    if num_classes is not None and num_classes != C:
+        # 모델 기준으로 맞춰줌
+        num_classes = C
+    elif num_classes is None:
+        num_classes = C
+
+    preds = logits.argmax(dim=1)  # [N,H,W]
+    targets = targets.long()
+
+    if ignore_index is not None:
+        mask = (targets != ignore_index)
+    else:
+        mask = torch.ones_like(targets, dtype=torch.bool)
+
+    valid = mask.sum().item()
+    if valid == 0:
+        # 전부 ignore면 0.0 반환 (여기서 0이 나오는지 확인)
+        if debug:
+            print("[DEBUG] All pixels ignored in this batch.")
+        return 0.0
+
+    correct = (preds[mask] == targets[mask]).sum().item()
+    acc = correct / valid
+
+    if debug:
+        pu = torch.unique(preds[mask]).tolist()
+        tu = torch.unique(targets[mask]).tolist()
+        print(f"[DEBUG] preds unique: {pu}")
+        print(f"[DEBUG] targets unique: {tu}")
+        print(f"[DEBUG] batch acc: {acc:.4f}")
+
+    return acc

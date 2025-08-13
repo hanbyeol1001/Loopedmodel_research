@@ -52,7 +52,7 @@ class SharedTransformerBlock(nn.Module):
     def forward(self, x, steps):
         thoughts = []
         for _ in range(steps):
-            x = self.block(x)
+            x = self.block(x)  # PreNorm 구조(기본)에서 MHSA→FFN이 내부에 포함됨
             thoughts.append(x)
         return x, torch.stack(thoughts)
 
@@ -70,11 +70,10 @@ class MazeUTModel(nn.Module):
         # Positional Encoding (Learnable)
         self.pos_embed = nn.Parameter(torch.randn(1, height * width, hidden_dim))
 
-        # Transformer Block
+        # Transformer Block (shared)
         self.transformer = SharedTransformerBlock(hidden_dim, nhead)
 
-
-        # Linear Decoder
+        # Linear Decoder (사실상 CNN 디코더)
         self.decoder = nn.Sequential(
             nn.Conv2d(hidden_dim, hidden_dim // 2, kernel_size=3, padding=1),
             nn.ReLU(),
@@ -86,21 +85,27 @@ class MazeUTModel(nn.Module):
     def forward(self, x, return_all_steps=False):
         B = x.size(0)
 
-        # CNN Encoder: (B, hidden_dim, H, W)
+        # 1) CNN Encoder: (B, hidden_dim, H, W)
         x = self.encoder(x)
         H, W = x.shape[2], x.shape[3]
 
-        # Flatten and Add Positional Encoding: (B, H*W, hidden_dim)
-        x = x.flatten(2).permute(0, 2, 1)
-        x = x + self.pos_embed[:, :H * W, :]
+        # 2) Flatten and Add Positional Encoding: (B, H*W, hidden_dim)
+        x = x.flatten(2).permute(0, 2, 1)     # (B, C, H*W) → (B, H*W, C) = (B, N, D)
+        x = x + self.pos_embed[:, :H * W, :]  # pos 추가 (길이 맞춰 슬라이스)
 
         thoughts = []
 
-        # Iterative Transformer Steps
+        # 3) Iterative Transformer Steps (UT)
         for _ in range(self.max_steps):
-            x, _ = self.transformer(x, steps=1)
-            decoded = self.decoder(x)  # (B, H*W, 2)
-            decoded = decoded.view(B, H, W, 2).permute(0, 3, 1, 2)  # (B, 2, H, W)
+            x, _ = self.transformer(x, steps=1)  # shared block 1회 적용
+            # decoded = self.decoder(x)  # (B, H*W, 2)
+            # decoded = decoded.view(B, H, W, 2).permute(0, 3, 1, 2)  # (B, 2, H, W)
+
+            # 오류 수정
+            # x: (B, N, D) = (B, H*W, hidden_dim)
+            x_map = x.permute(0, 2, 1).view(B, self.hidden_dim, H, W)  # (B, D, H, W)
+            decoded = self.decoder(x_map)        # (B, 2, H, W)
+
             thoughts.append(decoded)
 
         all_thoughts = torch.stack(thoughts)  # (steps, B, 2, H, W)

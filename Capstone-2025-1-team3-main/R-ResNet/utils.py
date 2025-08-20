@@ -37,14 +37,14 @@ def get_dataloaders(train_batch_size, test_batch_size, train_maze_size=9, test_m
 def get_model(model, width, depth):
     model = model.lower()
     # RecurResNetACT 모델을 직접 반환하도록 수정 (만약 recur_resnet_segment에 RecurResNetACT가 없다면)
-    # if model == "recur_resnet_act":
-    #     net = RecurResNetACT(BasicBlock, [2], depth=depth, width=width) 
+    if model == "recur_resnet_act":
+        net = RecurResNetACT(BasicBlock, [2], depth=depth, width=width) 
     # else:
     #     net = eval(model)(depth=depth, width=width)
-    if model == "recur_resnet_act":
-        net = recur_resnet_act(
-            depth, width, ponder_epsilon=0.01, time_penalty=0.005, max_iters=int((depth - 4) // 4)
-            )
+    # if model == "recur_resnet_act":
+    #     net = recur_resnet_act(
+    #         depth, width, ponder_epsilon=0.01, time_penalty=0.005, max_iters=int((depth - 4) // 4)
+    #         )
     elif model == "recur_resnet":
         net = recur_resnet(depth, width)
     return net

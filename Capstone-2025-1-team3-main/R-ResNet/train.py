@@ -100,8 +100,8 @@ def main():
         start_epoch += 1
 
     else:
-        # net = recur_resnet_act(args.depth, args.width, ponder_epsilon=0.01, time_penalty=0.005, max_iters=int((args.depth - 4) // 4))
-        net = get_model(args.model, args.depth, args.width)
+        net = recur_resnet_act(args.depth, args.width, ponder_epsilon=0.01, time_penalty=0.005, max_iters=int((args.depth - 4) // 4))
+        # net = get_model(args.model, args.depth, args.width)
         print(f'max_iters: {int((args.depth - 4) // 4)}')
         start_epoch = 0
         optimizer_state_dict = None
@@ -172,13 +172,13 @@ def main():
             print(f"Val_period")
             print(f"{now()} Validation accuracy: {train_acc}")
             # print(f"{now()} Testing accuracy: {test_acc}")
-            writer.add_scalar("Accuracy/test_acc_in_training", test_acc, epoch)
+            # writer.add_scalar("Accuracy/test_acc_in_training", test_acc, epoch)
 
-            stats = [train_acc, test_acc]
-            stat_names = ["train_acc", "test_acc"]
-            for stat_idx, stat in enumerate(stats):
-                stat_name = os.path.join("val", stat_names[stat_idx])
-                writer.add_scalar(stat_name, stat, epoch)
+            # stats = [train_acc, test_acc]
+            # stat_names = ["train_acc", "test_acc"]
+            # for stat_idx, stat in enumerate(stats):
+            #     stat_name = os.path.join("val", stat_names[stat_idx])
+            #     writer.add_scalar(stat_name, stat, epoch)
 
         # 모델 저장
         if (epoch + 1) % args.save_period == 0 or (epoch + 1) == args.epochs or check >= 10:

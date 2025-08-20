@@ -261,11 +261,11 @@ def main():
     else:
         args.test_iterations = -1
 
-    test_acc = test(net, testloader, args.test_mode, device)
+    # test_acc = test(net, testloader, args.test_mode, device)
     train_acc = -1 if args.quick_test else test(net, trainloader, args.test_mode, device)    
 
     print(f"{now()} Training accuracy: {train_acc}")
-    print(f"{now()} Testing accuracy: {test_acc}")
+    # print(f"{now()} Testing accuracy: {test_acc}")
 
     model_name_str = f"{args.model}_depth={args.depth}_width={args.width}"
     stats = OrderedDict([("epochs", args.epochs),
@@ -275,7 +275,7 @@ def main():
                           ("model", model_name_str),
                           ("num_params", pytorch_total_params),
                           ("optimizer", args.optimizer),
-                          ("test_acc", test_acc),
+                        #   ("test_acc", test_acc),
                           ("test_iter", args.test_iterations),
                           ("test_mode", args.test_mode),
                           ("train_acc", train_acc),

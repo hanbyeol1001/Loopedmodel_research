@@ -97,6 +97,7 @@ def test(net, testloader, mode, device):
     accuracy = eval(f"test_{mode}")(net, testloader, device)
     return accuracy
 
+
 def compute_image_entropy(x):
     x_gray = x.mean(dim=1)  # (B, H, W)
     b, h, w = x_gray.shape
@@ -114,6 +115,8 @@ def compute_image_entropy(x):
         entropies.append(entropy)
 
     return torch.tensor(entropies, device=x.device)  # shape: [B]
+
+
 def set_dynamic_ponder_epsilon(model, inputs, min_eps=0.002, max_eps=0.01):
     entropies = compute_image_entropy(inputs)  # shape: [B]
     avg_entropy = entropies.mean().item()
@@ -201,6 +204,7 @@ def test_default(net, testloader, device, tta_steps=5, lr=1e-2, title="Halting S
     print(f"[Train Epoch] Avg halting steps this epoch: {net.last_num_steps:.2f}")
     accuracy = 100.0 * correct / total
     print(f"[Test] Accuracy: {accuracy:.2f}%")
+    return accuracy
     
 
 def visualize_single_sample(weighted_output, input_img, weighted_output_history, target, batch_idx, sample_type, cmap="magma", max_cols = 5, save_path = './iter_img'):

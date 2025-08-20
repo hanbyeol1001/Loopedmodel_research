@@ -240,6 +240,16 @@ def train_default(net, trainloader, optimizer_obj, device):
         
         outputs = net(inputs)
 
+        # outputs: expect (B, C, H, W)
+        if isinstance(outputs, tuple):
+            # (logits, aux) 형태일 때 첫 번째를 사용
+            outputs = outputs[0]
+
+        # 스텝 전체가 쌓인 텐서일 때 마지막 스텝만 사용: (steps, B, C, H, W) -> (B, C, H, W)
+        if outputs.dim() == 5:
+            outputs = outputs[-1]
+
+
         n, c, h, w = outputs.size()
         reshaped_outputs = outputs.transpose(1, 2).transpose(2, 3).contiguous()
         reshaped_outputs = reshaped_outputs[targets.view(n, h, w, 1).repeat(1, 1, 1, c) >= 0]

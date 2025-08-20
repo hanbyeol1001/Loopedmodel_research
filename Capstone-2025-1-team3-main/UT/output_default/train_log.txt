@@ -40,3 +40,5 @@
 
 20250814 02:59:12 Namespace(checkpoint='check_default', data_path='../data', depth=4, epochs=20, lr=0.001, lr_factor=0.1, lr_schedule=[100, 150], model='maze_ut', model_path=None, shuffle=True, optimizer='adam', output='output_default', quick_test=False, save_json=False, save_period=20, test_batch_size=500, test_iterations=None, test_mode='default', train_batch_size=128, train_log='train_log.txt', train_mode='default', val_period=20, warmup_period=5, width=4)
 
+20250814 03:37:16 Namespace(checkpoint='check_default', data_path='../data', depth=4, epochs=20, lr=0.001, lr_factor=0.1, lr_schedule=[100, 150], model='maze_ut', model_path=None, shuffle=True, optimizer='adam', output='output_default', quick_test=False, save_json=False, save_period=20, test_batch_size=500, test_iterations=None, test_mode='default', train_batch_size=128, train_log='train_log.txt', train_mode='default', val_period=20, warmup_period=5, width=4)
+

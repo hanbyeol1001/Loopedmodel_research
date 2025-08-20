@@ -187,7 +187,7 @@ class RecurResNetACT(nn.Module):
 
         return weighted_output, avg_ponder_cost
 
-def recur_resnet_act(depth, width, ponder_epsilon=0.01, time_penalty=0.01, max_iters=50):
+def recur_resnet_act(depth, width, ponder_epsilon=0.01, time_penalty=0.005, max_iters=50):
     """ACT가 적용된 순환 ResNet 생성 함수"""
     return RecurResNetACT(BasicBlock, [2], depth=depth, width=width,
                           ponder_epsilon=ponder_epsilon, time_penalty=time_penalty,

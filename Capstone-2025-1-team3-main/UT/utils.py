@@ -52,8 +52,6 @@ def get_dataloaders(train_batch_size, test_batch_size, shuffle=True):
     return trainloader, testloader
 
 
-
-
 def get_model(model, width, depth):
     """Function to load the Universal Transformer model"""
     model = model.lower()
@@ -63,8 +61,6 @@ def get_model(model, width, depth):
         return MazeUTModelACT(input_channels=3, hidden_dim=128, max_steps=10, nhead=4, height=32, width=32, out_channels=2, ponder_epsilon=0.01, time_penalty=0.01)
     else:
         raise ValueError(f"Unknown model: {model}")
-
-
 
 
 def get_optimizer(optimizer_name, model, net, lr):
@@ -116,6 +112,29 @@ class OptimizerWithSched:
     warmup: "typing.Any"
 
 
+def _ensure_logits(outputs: torch.Tensor) -> torch.Tensor:
+    """
+    다양한 반환 케이스를 받아 항상 (B, C, H, W) 로짓 텐서로 정규화한다.
+    - (logits, aux...) 형태면 첫 번째만 사용
+    - (steps, B, C, H, W) 형태면 마지막 스텝만 사용
+    """
+    # (logits, aux) / [logits, aux] 등
+    if isinstance(outputs, (tuple, list)):
+        outputs = outputs[0]
+
+    # all-steps 쌓인 텐서: (steps, B, C, H, W) -> 마지막 스텝
+    if isinstance(outputs, torch.Tensor) and outputs.dim() == 5:
+        outputs = outputs[-1]
+
+    if not isinstance(outputs, torch.Tensor):
+        raise TypeError(f"Model must return a Tensor; got {type(outputs)}")
+
+    if outputs.dim() != 4:
+        raise ValueError(f"Expected logits with shape (B,C,H,W); got shape {tuple(outputs.shape)}")
+
+    return outputs
+
+
 def test(net, testloader, mode, device):
     try:
         accuracy = eval(f"test_{mode}")(net, testloader, device)
@@ -135,6 +154,8 @@ def test_default(net, testloader, device):
         for inputs, targets in tqdm(testloader, leave=False):
             inputs, targets = inputs.to(device), targets.to(device).unsqueeze(1).long()
             outputs = net(inputs)
+
+            outputs = _ensure_logits(outputs) 
 
             targets = targets.squeeze(1)
             predicted = outputs.argmax(1) * inputs.max(1)[0]
@@ -240,15 +261,7 @@ def train_default(net, trainloader, optimizer_obj, device):
         
         outputs = net(inputs)
 
-        # outputs: expect (B, C, H, W)
-        if isinstance(outputs, tuple):
-            # (logits, aux) 형태일 때 첫 번째를 사용
-            outputs = outputs[0]
-
-        # 스텝 전체가 쌓인 텐서일 때 마지막 스텝만 사용: (steps, B, C, H, W) -> (B, C, H, W)
-        if outputs.dim() == 5:
-            outputs = outputs[-1]
-
+        outputs = _ensure_logits(outputs) 
 
         n, c, h, w = outputs.size()
         reshaped_outputs = outputs.transpose(1, 2).transpose(2, 3).contiguous()

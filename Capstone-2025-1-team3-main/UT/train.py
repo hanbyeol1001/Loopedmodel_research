@@ -65,6 +65,9 @@ def main():
     parser.add_argument("--val_period", default=20, type=int, help="how often to validate")
     parser.add_argument("--warmup_period", default=5, type=int, help="warmup period")
     parser.add_argument("--width", default=2, type=int, help="width of the network")
+    parser.add_argument("--test_maze_size", default=13, type=int, help="test_maze_size") 
+    parser.add_argument("--train_maze_size", default=13, type=int, help="train_maze_size")  
+
 
     args = parser.parse_args()
     print(args.shuffle)
@@ -88,7 +91,9 @@ def main():
 
     ####################################################
     #               Dataset and Network and Optimizer
-    trainloader, testloader = get_dataloaders(args.train_batch_size, args.test_batch_size, shuffle=args.shuffle)
+    trainloader, testloader = get_dataloaders(
+        args.train_batch_size, args.test_batch_size, args.train_maze_size,
+        args.test_maze_size, shuffle=args.shuffle)
 
     if args.model_path is not None:
         print(f"Loading model from checkpoint {args.model_path}...")
@@ -143,13 +148,13 @@ def main():
     else:
         print("Warning: best_model_state와 model_path 모두 없습니다. 랜덤 파라미터로 테스트합니다.")
     
-    # ===== debug 코드 시작 =====
-    batch = next(iter(trainloader))
-    inputs, targets = batch
-    print("DEBUG inputs.shape: ", inputs.shape)
-    print("DEBUG targets.shape: ", targets.shape)
-    print("DEBUG unique labels: ", torch.unique(targets))
-    # ===== debug 코드 끝 =====
+    # # ===== debug 코드 시작 =====
+    # batch = next(iter(trainloader))
+    # inputs, targets = batch
+    # print("DEBUG inputs.shape: ", inputs.shape)
+    # print("DEBUG targets.shape: ", targets.shape)
+    # print("DEBUG unique labels: ", torch.unique(targets))
+    # # ===== debug 코드 끝 =====
 
     for epoch in range(start_epoch, args.epochs):
         loss, acc = train(net, trainloader, args.train_mode, optimizer_obj, device)

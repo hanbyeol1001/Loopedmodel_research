@@ -40,10 +40,10 @@ from models.ut_act import MazeUTModelACT
 # pylint: disable=R0912, R0915, E1101, E1102, C0103, W0702, R0914, C0116, C0115, W0611
 
 
-def get_dataloaders(train_batch_size, test_batch_size, shuffle=True):
+def get_dataloaders(train_batch_size, test_batch_size, train_maze_size=9, test_maze_size=9, shuffle=True):
 
-    train_data = MazeDataset("./data", train=True)
-    test_data = MazeDataset("./data", size=15, train=False)
+    train_data = MazeDataset("./data", size=train_maze_size, train=True)
+    test_data = MazeDataset("./data", size=test_maze_size, train=False)
 
     trainloader = data.DataLoader(train_data, num_workers=0, batch_size=train_batch_size,
                                   shuffle=shuffle, drop_last=True)

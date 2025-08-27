@@ -16,7 +16,7 @@ import matplotlib.pyplot as plt
 from torch.utils.data import ConcatDataset, DataLoader
 import torch.utils.data as data
 
-def get_dataloaders(train_batch_size, test_batch_size, shuffle=True, train_maze_size=9, test_maze_size=9):
+def get_dataloaders(train_batch_size, test_batch_size, train_maze_size=9, test_maze_size=9, shuffle=True):
     train_data = MazeDataset("./data", size=train_maze_size, train=True)
     test_data = MazeDataset("./data", size=test_maze_size, train=False)
     trainloader = data.DataLoader(train_data, num_workers=4, batch_size=train_batch_size,

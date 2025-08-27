@@ -54,7 +54,7 @@ def get_optimizer(optimizer_name, model, net, lr):
     optimizer_name = optimizer_name.lower()
     model = model.lower()
 
-    if "recur" in model:
+    if "act" in model:
         # 모델 파라미터에서 recur_block에 해당하는 파라미터만 분리
         base_params = [p for n, p in net.named_parameters() if "recur_block" not in n]
         recur_params = [p for n, p in net.named_parameters() if "recur_block" in n]
@@ -393,6 +393,7 @@ def train_default(net, trainloader, optimizer_obj, device):
     warmup_scheduler = optimizer_obj.warmup
 
     criterion = torch.nn.CrossEntropyLoss(reduction="none")  # 픽셀 단위 손실 계산 가능.
+    
     time_penalty = net.time_penalty  # 조정 가능한 시간 패널티 계수(수식에서 람다 역할)
     
     # 손실, 정확도, 픽셀 수, ponder cost 누적을 위한 변수 초기화

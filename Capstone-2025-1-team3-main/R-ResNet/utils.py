@@ -379,8 +379,8 @@ def to_log_file(out_dict, out_dir, log_name="log.txt"):
     print("logging done in " + out_dir + ".")
 
 
-def train(net, trainloader, mode, optimizer_obj, device):
-    train_loss, acc, net = eval(f"train_{mode}")(net, trainloader, optimizer_obj, device)
+def train(net, trainloader, mode, optimizer_obj, device, epoch):
+    train_loss, acc, net = eval(f"train_{mode}")(net, trainloader, optimizer_obj, device, epoch)
     return train_loss, acc, net
 
 

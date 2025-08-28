@@ -194,7 +194,11 @@ def test_default(net, testloader, device, tta_steps=5, lr=1e-2, title="Halting S
             # eps = set_dynamic_ponder_epsilon(net, inputs) # 이건 동적 epsilon
             # print(f"[Dynamic ε] adjusted to {eps:.5f} based on input complexity")
 
-            weighted_output, _ = net(inputs)
+            out = net(inputs)
+            if isinstance(out, tuple):
+                weighted_output, _ = out
+            else:
+                weighted_output = out
 
             predicted = weighted_output.argmax(1) * inputs.max(1)[0]
             correct += torch.amin(predicted == targets.squeeze(1), dim=[1, 2]).sum().item()

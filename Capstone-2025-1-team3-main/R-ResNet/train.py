@@ -101,7 +101,7 @@ def main():
 
     else:
         # net = recur_resnet_act(args.depth, args.width, ponder_epsilon=0.01, time_penalty=0.005, max_iters=int((args.depth - 4) // 4))
-        net = get_model(args.model, args.depth, args.width)
+        net = get_model(args.model, args.width, args.depth)
         print(f'max_iters: {int((args.depth - 4) // 4)}')
         start_epoch = 0
         optimizer_state_dict = None

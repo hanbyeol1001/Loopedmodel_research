@@ -394,14 +394,14 @@ def train_default(net, trainloader, optimizer_obj, device):
 
     criterion = torch.nn.CrossEntropyLoss(reduction="none")  # 픽셀 단위 손실 계산 가능.
     
-    time_penalty = net.time_penalty  # 조정 가능한 시간 패널티 계수(수식에서 람다 역할)
+    time_penalty = getattr(net, "time_penalty", 0.0)  # 조정 가능한 시간 패널티 계수(수식에서 람다 역할)
     
     # 손실, 정확도, 픽셀 수, ponder cost 누적을 위한 변수 초기화
     train_loss = 0
     correct = 0
     total = 0
     total_pixels = 0
-    total_ponder_cost = 0  # Ponder cost 추적 추가
+    total_ponder_cost = 0  # (있으면)Ponder cost 추적 추가
     
     # 미니배치 루프
     torch.set_printoptions(profile="full")
@@ -412,28 +412,32 @@ def train_default(net, trainloader, optimizer_obj, device):
         optimizer.zero_grad()
         
         # 모델 forward
-        weighted_output, avg_ponder_cost = net(inputs)
+        out = net(inputs)
+        if isinstance(out, tuple):
+            weighted_output, avg_ponder_cost = out
+        else:
+            weighted_output = out
+            avg_ponder_cost = torch.tensor(0.0, device=weighted_output.device)
 
-        # 출력 형태 재구성
+        # 출력 형태 재구성 (픽셀 단위 CE 위해)
         n, c, h, w = weighted_output.size()
         # (B, C, H, W) → (B*H*W, C)
         reshaped_outputs = weighted_output.permute(0, 2, 3, 1).contiguous().view(-1, c)
         
-        # 유효 픽셀 마스킹 
+        # 유효 픽셀 마스킹 (-1 라벨 무시)
         mask = (targets >= 0).squeeze(1)
         reshaped_targets = targets.squeeze(1)[mask].view(-1)
         
-        # 경로 마스크 계산
-        reshaped_inputs = inputs.permute(0, 2, 3, 1).contiguous()
-        reshaped_inputs = reshaped_inputs.mean(dim=3, keepdim=True)
+        # 경로 마스크 계산: 입력 평균 밝기 > 0 인 위치만 학습
+        reshaped_inputs = inputs.permute(0, 2, 3, 1).contiguous().mean(dim=3, keepdim=True)
         reshaped_inputs = reshaped_inputs[mask].view(-1, 1)
         path_mask = (reshaped_inputs > 0).squeeze()
 
-        # Task loss 계산
+        # Task loss (경로 픽셀만 평균)
         task_loss = criterion(reshaped_outputs, reshaped_targets)
         task_loss = task_loss[path_mask].mean()
         
-        # 전체 손실 계산
+        # 총 손실 = CE + (있으면) ponder cost
         total_loss = task_loss + time_penalty * avg_ponder_cost
         total_loss.backward()
         
@@ -441,12 +445,12 @@ def train_default(net, trainloader, optimizer_obj, device):
         torch.nn.utils.clip_grad_norm_(net.parameters(), 1.0)
         optimizer.step()
 
-        # loss 계산은 픽셀 단위로
+        # 통계 집계: loss 계산은 픽셀 단위로
         train_loss += task_loss.item() * path_mask.size(0)
         total_ponder_cost += avg_ponder_cost.item() * inputs.size(0)
         total_pixels += path_mask.size(0)
 
-        # 정확도 계산
+        # 정확도 계산 (이미지 단위 all-correct 기준: amin)
         targets = targets.squeeze(1)
         predicted = weighted_output.argmax(1) * inputs.max(1)[0]
         correct += torch.amin(predicted == targets, dim=[1, 2]).sum().item()
@@ -454,13 +458,17 @@ def train_default(net, trainloader, optimizer_obj, device):
 
     train_loss = train_loss / total_pixels
     acc = 100.0 * correct / total
+
     lr_scheduler.step()
     warmup_scheduler.dampen()
 
-    print(f"[Train Epoch] Avg halting steps this epoch: {net.last_num_steps:.2f}")
-    print(f"[Train Epoch] Sample stopped_at_step[:10]: {net.stopped_at_step[:10].cpu().tolist()}")
+    if hasattr(net, "last_num_steps"):
+        print(f"[Train Epoch] Avg halting steps this epoch: {net.last_num_steps:.2f}")
+    if hasattr(net, "stopped_at_step"):
+        print(f"[Train Epoch] Sample stopped_at_step[:10]: {net.stopped_at_step[:10].cpu().tolist()}")
 
     return train_loss, acc, net
+
 
 class AllLogger:
     def __init__(self, filepath):

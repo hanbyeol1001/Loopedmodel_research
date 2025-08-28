@@ -157,7 +157,8 @@ def train_default(net, trainloader, optimizer_obj, device):
 
 def train(net, trainloader, mode, optimizer_obj, device):
     train_func_dict = {
-        "default": train_default
+        "default": train_default,
+        "baseline": train_baseline
     }
 
     if mode not in train_func_dict:

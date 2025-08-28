@@ -197,14 +197,13 @@ def test_default(net, testloader, device, tta_steps=5, lr=1e-2, title="Halting S
             out = net(inputs)
             if isinstance(out, tuple):
                 weighted_output, _ = out
+                all_stopped_at_steps.extend(net.stopped_at_step.cpu().tolist())
             else:
                 weighted_output = out
 
             predicted = weighted_output.argmax(1) * inputs.max(1)[0]
             correct += torch.amin(predicted == targets.squeeze(1), dim=[1, 2]).sum().item()
             total += targets.size(0)
-
-            all_stopped_at_steps.extend(net.stopped_at_step.cpu().tolist())
 
     os.makedirs(save_dir, exist_ok=True)
     
@@ -213,7 +212,13 @@ def test_default(net, testloader, device, tta_steps=5, lr=1e-2, title="Halting S
     
     # 저장 (npy + txt)
     np.save(os.path.join(save_dir, "halting_steps.npy"), steps_array) # 급하게 돌려본거라 돌리고나서 size랑 모델 이름에 넣어서 바꿔줘야함!!!!
-    print(f"[Train Epoch] Avg halting steps this epoch: {net.last_num_steps:.2f}")
+    if hasattr(net, "last_num_steps") and net.last_num_steps is not None:
+        print(f"[Train Epoch] Avg halting steps this epoch: {float(net.last_num_steps):.2f}")
+    elif hasattr(net, "iters"):
+        print(f"[Train Epoch] Avg halting steps this epoch: {net.iters} (fixed)")
+    else:
+        print(f"[Train Epoch] Avg halting steps this epoch: N/A")
+
     accuracy = 100.0 * correct / total
     print(f"[Test] Accuracy: {accuracy:.2f}%")
     return accuracy

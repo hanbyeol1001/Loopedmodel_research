@@ -63,7 +63,7 @@ class RecurResNet(nn.Module):
         strides = [stride] + [1]*(num_blocks-1)
         layers = []
         for strd in strides:
-            layers.append(block(self.in_planes, planes, strd))
+            layers.append(block(self.in_planes, planes, strd, iters=self.iters))
             self.in_planes = planes * block.expansion
         return nn.Sequential(*layers)
 

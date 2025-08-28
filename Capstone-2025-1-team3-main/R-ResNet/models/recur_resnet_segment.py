@@ -40,6 +40,7 @@ class RecurResNet(nn.Module):
     def __init__(self, block, num_blocks, depth, width=1):
         super(RecurResNet, self).__init__()
         self.iters = int((depth - 4) // 4)
+        self.iters = max(1, self.iters)
         self.in_planes = int(width*64)
         self.conv1 = nn.Conv2d(3, int(width * 64), kernel_size=3,
                                stride=1, padding=1, bias=False)

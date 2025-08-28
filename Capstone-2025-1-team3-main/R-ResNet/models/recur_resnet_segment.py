@@ -64,14 +64,14 @@ class RecurResNet(nn.Module):
         return nn.Sequential(*layers)
 
     def forward(self, x):
-        self.thoughts = torch.zeros((self.iters, x.shape[0], 2, x.shape[2], x.shape[3])).to(x.device)
+        last = None
         out = F.relu(self.conv1(x))
         for i in range(self.iters):
             out = self.recur_block(out)  # 공유된 두 개의 BasicBlock 반복
             thought = F.relu(self.conv2(out))
             thought = F.relu(self.conv3(thought))
-            self.thoughts[i] = self.conv4(thought)  # 각 출력(2채널 출력)을 저장하지만, 
-        return self.thoughts[-1]  # 최종적으로는 마지막 step만 반환
+            last = self.conv4(thought)  # 각 출력(2채널 출력)을 저장하지만, 
+        return last  # 최종적으로는 마지막 step만 반환
 
 
 def recur_resnet(depth, width):

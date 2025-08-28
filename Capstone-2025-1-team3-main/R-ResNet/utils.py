@@ -384,7 +384,7 @@ def train(net, trainloader, mode, optimizer_obj, device):
     return train_loss, acc, net
 
 
-def train_default(net, trainloader, optimizer_obj, device):
+def train_default(net, trainloader, optimizer_obj, device, epoch):
     # 초기 설정
     net.train()  # 모델을 학습 모드로 전환
     net = net.to(device)  # GPU 또는 CPU로 모델 이동
@@ -419,6 +419,12 @@ def train_default(net, trainloader, optimizer_obj, device):
         else:
             weighted_output = out
             avg_ponder_cost = torch.tensor(0.0, device=weighted_output.device)
+
+        # --- sanity checks: 출력 finite ---
+        if not torch.isfinite(weighted_output).all():
+            # 문제가 있는 배치는 건너뜀
+            print(f"[Warning][Epoch {epoch} | Batch {batch_idx}] Non-finite values detected in model output. Skipping this batch.")
+            continue
 
         # 출력 형태 재구성 (픽셀 단위 CE 위해)
         n, c, h, w = weighted_output.size()
@@ -457,8 +463,8 @@ def train_default(net, trainloader, optimizer_obj, device):
         correct += torch.amin(predicted == targets, dim=[1, 2]).sum().item()
         total += targets.size(0)
 
-    train_loss = train_loss / total_pixels
-    acc = 100.0 * correct / total
+    train_loss = train_loss / max(1, total_pixels)
+    acc = 100.0 * correct / max(1, total_pixels)
 
     lr_scheduler.step()
     warmup_scheduler.dampen()

@@ -143,7 +143,7 @@ def main():
     check = 0
 
     for epoch in range(start_epoch, args.epochs):
-        loss, acc, net = train(net, trainloader, args.train_mode, optimizer_obj, device)
+        loss, acc, net = train(net, trainloader, args.train_mode, optimizer_obj, device, epoch)
 
         train_losses.append(loss)    
         train_accuracies.append(acc)  

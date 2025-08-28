@@ -1,3 +1,4 @@
+import math
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -6,13 +7,14 @@ class BasicBlock(nn.Module):
     """Basic residual block class"""
     expansion = 1
 
-    def __init__(self, in_planes, planes, stride=1):
+    def __init__(self, in_planes, planes, stride=1, iters=1):
         '''
         conv1: 3x3, stride=stride, padding=1
         conv2: 3x3, stride=1, padding=1
         shortcut: (stride!=1 or 채널 다르면) 1x1 conv, 아니면 id
         '''
         super(BasicBlock, self).__init__()
+        self.iters = iters   # 반복 횟수 받아옴
         self.conv1 = nn.Conv2d(
             in_planes, planes, kernel_size=3, stride=stride, padding=1, bias=False)
 
@@ -29,7 +31,8 @@ class BasicBlock(nn.Module):
     def forward(self, x):
         out = F.relu(self.conv1(x))
         out = self.conv2(out)
-        out += self.shortcut(x)
+        # residual scaling 적용
+        out += self.shortcut(x) / math.sqrt(self.iters)
         out = F.relu(out)
         return out
 

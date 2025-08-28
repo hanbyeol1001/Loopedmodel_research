@@ -61,45 +61,45 @@ class OptimizerWithSched:
     scheduler: object
     warmup: object
 
-# def train_default(net, trainloader, optimizer_obj, device): # only ViT
-#     net.train()
-#     optimizer = optimizer_obj.optimizer
-#     lr_scheduler = optimizer_obj.scheduler
-#     warmup_scheduler = optimizer_obj.warmup
-#     criterion = torch.nn.CrossEntropyLoss(reduction="mean")
-#     train_loss, correct, total = 0, 0, 0
+def train_baseline(net, trainloader, optimizer_obj, device): # only ViT
+    net.train()
+    optimizer = optimizer_obj.optimizer
+    lr_scheduler = optimizer_obj.scheduler
+    warmup_scheduler = optimizer_obj.warmup
+    criterion = torch.nn.CrossEntropyLoss(reduction="mean")
+    train_loss, correct, total = 0, 0, 0
     
-#     for inputs, targets in tqdm(trainloader, leave=False):
-#         inputs, targets = inputs.to(device), targets.to(device).unsqueeze(1).long()
+    for inputs, targets in tqdm(trainloader, leave=False):
+        inputs, targets = inputs.to(device), targets.to(device).unsqueeze(1).long()
 
-#         optimizer.zero_grad()
+        optimizer.zero_grad()
         
-#         outputs = net(inputs)
+        outputs = net(inputs)
 
-#         # ViT or UT structure: use last step's output
-#         if isinstance(net, (MazeViTUTModel)) and outputs.dim() == 5:
-#             outputs = outputs[-1]
+        # ViT or UT structure: use last step's output
+        if isinstance(net, (MazeViTUTModel)) and outputs.dim() == 5:
+            outputs = outputs[-1]
 
-#         B_out, C_out, H_out, W_out = outputs.size()
-#         targets_resized = F.interpolate(targets.float(), size=(H_out, W_out), mode='nearest').long().squeeze(1)
-#         reshaped_outputs = outputs.permute(0, 2, 3, 1).contiguous().view(-1, C_out)
-#         reshaped_targets = targets_resized.view(-1)
+        B_out, C_out, H_out, W_out = outputs.size()
+        targets_resized = F.interpolate(targets.float(), size=(H_out, W_out), mode='nearest').long().squeeze(1)
+        reshaped_outputs = outputs.permute(0, 2, 3, 1).contiguous().view(-1, C_out)
+        reshaped_targets = targets_resized.view(-1)
         
-#         loss = criterion(reshaped_outputs, reshaped_targets)
-#         loss.backward()
-#         optimizer.step()
+        loss = criterion(reshaped_outputs, reshaped_targets)
+        loss.backward()
+        optimizer.step()
         
-#         train_loss += loss.item() * reshaped_targets.size(0)
-#         total += reshaped_targets.size(0)
-#         predicted = outputs.argmax(1)
-#         correct += (predicted == targets_resized).sum().item()
+        train_loss += loss.item() * reshaped_targets.size(0)
+        total += reshaped_targets.size(0)
+        predicted = outputs.argmax(1)
+        correct += (predicted == targets_resized).sum().item()
     
-#     train_loss /= total
-#     acc = 100.0 * correct / total
-#     lr_scheduler.step()
-#     warmup_scheduler.dampen()
+    train_loss /= total
+    acc = 100.0 * correct / total
+    lr_scheduler.step()
+    warmup_scheduler.dampen()
 
-#     return train_loss, acc
+    return train_loss, acc
 
 
 def train_default(net, trainloader, optimizer_obj, device):

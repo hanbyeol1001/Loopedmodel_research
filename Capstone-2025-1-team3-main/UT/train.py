@@ -136,14 +136,27 @@ def train_act(net, trainloader, optimizer_obj, device):
     total_pixels = 0
 
     for batch_idx, (inputs, targets) in enumerate(tqdm(trainloader, leave=False)):
+        if batch_idx == 0:
+            print(f"Inputs tensor shape: {inputs.shape}")
+            print(f"Targets tensor shape: {targets.shape}")
         inputs, targets = inputs.to(device), targets.to(device).unsqueeze(1).long()
+        if batch_idx == 0:
+            print(f"After unsqueeze Inputs tensor shape: {inputs.shape}")
+            print(f"After unsqueeze Targets tensor shape: {targets.shape}")
+        # inputs, targets = inputs.to(device), targets.to(device).unsqueeze(1).long()
         optimizer.zero_grad()
         
         # UT 모델의 forward 함수는 outputs와 avg_ponder_cost를 함께 반환합니다.
         outputs, avg_ponder_cost = net(inputs)
 
         # 모델 출력은 튜플이 아닌, 텐서여야 하므로 _ensure_logits 함수에 outputs를 바로 전달합니다.
-        outputs = _ensure_logits(outputs)
+        if batch_idx == 0:
+            print(f"Outputs tensor shape: {outputs.shape}")
+
+        outputs = _ensure_logits(outputs) 
+        if batch_idx == 0:
+            print(f"After ensure_logits Outputs tensor shape: {outputs.shape}")
+        # outputs = _ensure_logits(outputs)
         
         # 출력(outputs) 및 정답(targets) 텐서 재구성
         n, c, h, w = outputs.size()

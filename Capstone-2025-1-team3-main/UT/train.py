@@ -1,5 +1,6 @@
 import torch
 from tqdm import tqdm
+from utils import _ensure_logits
 
 
 def train_default(net, trainloader, optimizer_obj, device):

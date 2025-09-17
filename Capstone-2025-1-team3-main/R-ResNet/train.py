@@ -44,7 +44,7 @@ def main():
     parser.add_argument("--test_batch_size", default=500, type=int, help="batch size for testing")
     parser.add_argument("--test_iterations", default=None, type=int,
                         help="how many, if testing with a different number iterations")
-    parser.add_argument("--test_mode", default="default", type=str, help="testing mode")  # 테스트 모드: 왜 있는 지 모르겠음
+    parser.add_argument("--test_mode", default="default", type=str, help="testing mode")
     parser.add_argument("--train_batch_size", default=128, type=int,
                         help="batch size for training")
     parser.add_argument("--train_log", default="train_log.txt", type=str,
@@ -290,3 +290,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+

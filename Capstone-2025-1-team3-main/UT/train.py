@@ -1,6 +1,28 @@
 import torch
 from tqdm import tqdm
-from utils import _ensure_logits
+
+
+def _ensure_logits(outputs: torch.Tensor) -> torch.Tensor:
+    """
+    다양한 반환 케이스를 받아 항상 (B, C, H, W) 로짓 텐서로 정규화한다.
+    - (logits, aux...) 형태면 첫 번째만 사용
+    - (steps, B, C, H, W) 형태면 마지막 스텝만 사용
+    """
+    # (logits, aux) / [logits, aux] 등
+    if isinstance(outputs, (tuple, list)):
+        outputs = outputs[0]
+
+    # all-steps 쌓인 텐서: (steps, B, C, H, W) -> 마지막 스텝
+    if isinstance(outputs, torch.Tensor) and outputs.dim() == 5:
+        outputs = outputs[-1]
+
+    if not isinstance(outputs, torch.Tensor):
+        raise TypeError(f"Model must return a Tensor; got {type(outputs)}")
+
+    if outputs.dim() != 4:
+        raise ValueError(f"Expected logits with shape (B,C,H,W); got shape {tuple(outputs.shape)}")
+
+    return outputs
 
 
 def train_default(net, trainloader, optimizer_obj, device):

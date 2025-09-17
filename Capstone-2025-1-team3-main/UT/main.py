@@ -1,5 +1,5 @@
 
-"""train.py
+"""main.py
    Train, test, and save models
    Developed as part of DeepThinking2 project
    April 2021
@@ -32,7 +32,7 @@ from utils import train, test, OptimizerWithSched, load_model_from_checkpoint, \
 def main():
 
     print("\n_________________________________________________\n")
-    print(now(), "train.py main() running.")
+    print(now(), "main.py main() running.")
 
     parser = argparse.ArgumentParser(description="Deep Thinking")
     parser.add_argument("--checkpoint", default="check_default", type=str,
@@ -274,3 +274,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+

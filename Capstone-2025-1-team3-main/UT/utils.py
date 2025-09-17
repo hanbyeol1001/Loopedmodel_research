@@ -256,14 +256,26 @@ def train_default(net, trainloader, optimizer_obj, device):
     total_pixels = 0
 
     for batch_idx, (inputs, targets) in enumerate(tqdm(trainloader, leave=False)):
+        if batch_idx == 0:
+            print(f"Inputs tensor shape: {inputs.shape}")
+            print(f"Targets tensor shape: {targets.shape}")
         inputs, targets = inputs.to(device), targets.to(device).unsqueeze(1).long()
+        if batch_idx == 0:
+            print(f"After unsqueeze Inputs tensor shape: {inputs.shape}")
+            print(f"After unsqueeze Targets tensor shape: {targets.shape}")
+        
         optimizer.zero_grad()
         
         outputs = net(inputs)
+        if batch_idx == 0:
+            print(f"Outputs tensor shape: {outputs.shape}")
 
         outputs = _ensure_logits(outputs) 
+        if batch_idx == 0:
+            print(f"After ensure_logits Outputs tensor shape: {outputs.shape}")
 
         n, c, h, w = outputs.size()
+        
         reshaped_outputs = outputs.transpose(1, 2).transpose(2, 3).contiguous()
         reshaped_outputs = reshaped_outputs[targets.view(n, h, w, 1).repeat(1, 1, 1, c) >= 0]
         reshaped_outputs = reshaped_outputs.view(-1, c)
@@ -459,5 +471,6 @@ def safe_pixel_accuracy(logits, targets, num_classes=None, ignore_index=-1, debu
         print(f"[DEBUG] preds unique: {pu}")
         print(f"[DEBUG] targets unique: {tu}")
         print(f"[DEBUG] batch acc: {acc:.4f}")
+
 
     return acc

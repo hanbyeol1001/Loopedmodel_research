@@ -233,11 +233,17 @@ def to_log_file(out_dict, out_dir, log_name="log.txt"):
 
 
 def train(net, trainloader, mode, optimizer_obj, device):
-    try:
-        train_loss, acc = eval(f"train_{mode}")(net, trainloader, optimizer_obj, device)
-    except NameError:
-        print(f"{ic.format()}: train_{mode}() not implemented. Exiting.")
-        sys.exit()
+    if mode == "default":
+        return train_default(net, trainloader, optimizer_obj, device)
+    elif mode == "act":
+        return train_act(net, trainloader, optimizer_obj, device)
+    else:
+        raise ValueError(f"Unknown training mode: {mode}")
+    # try:
+    #     train_loss, acc = eval(f"train_{mode}")(net, trainloader, optimizer_obj, device)
+    # except NameError:
+    #     print(f"{ic.format()}: train_{mode}() not implemented. Exiting.")
+    #     sys.exit()
     return train_loss, acc
 
 
@@ -388,5 +394,6 @@ def safe_pixel_accuracy(logits, targets, num_classes=None, ignore_index=-1, debu
 
 
     return acc
+
 
 

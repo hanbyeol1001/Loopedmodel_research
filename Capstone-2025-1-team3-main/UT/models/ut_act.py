@@ -77,12 +77,18 @@ class MazeUTModelACT(nn.Module):
         pos_embed = torch.randn(1, H * W, self.hidden_dim, device=device)
         x = x + pos_embed
 
+        # 각 픽셀(토큰)마다 지금까지 멈춤에 쓴 가중치의 누적합. 처음은 0.
         halting_prob = torch.zeros(B, H * W, device=device)
+        # 마지막 스텝에서 남은 조각(weight)의 기록용(후에 비용 계산에 쓰일 수 있음)
         remainders = torch.zeros(B, H * W, device=device)
+        # 각 픽셀이 몇 번 업데이트(생각)했는지 카운트. 처음은 0.
         n_updates = torch.zeros(B, H * W, device=device)
+        # 스텝마다 나온 출력(로짓)을 조금씩 합쳐 나갈 그릇. 마지막에 여기에 최종 결과가 들어감.
         weighted_output = torch.zeros(B, 2, H, W, device=device)
+        # 아직 계산을 계속해야 하는 픽셀을 표시(처음엔 전부 True)
         still_running = torch.ones(B, H * W, device=device, dtype=torch.bool)
 
+        # 매 스텝의 원시 출력을 모아두는 리스트(디버깅용/나중 분석용).
         self.weighted_output_history = []
 
         for step in range(self.max_iters):

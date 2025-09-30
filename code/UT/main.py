@@ -123,7 +123,7 @@ def main():
         start_epoch += 1
 
     else:
-        net = get_model(args.model, args.width, args.depth)
+        net = get_model(args.model, args.train_maze_size)
         start_epoch = 0
         optimizer_state_dict = None
 

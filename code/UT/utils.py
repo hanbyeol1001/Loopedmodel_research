@@ -143,13 +143,15 @@ def get_dataloaders(train_batch_size,
     return trainloader, valloader, testloader
 
 
-def get_model(model, width, depth):
+def get_model(model, train_size):
     """Function to load the Universal Transformer model"""
     model = model.lower()
+    size = train_size*2 + 6
+    print(f'\n height x width: {size} x {size}\n')
     if model== "maze_ut":
-        return MazeUTModel(input_channels=3, hidden_dim=128, max_steps=4, nhead=4, height=24, width=24)
+        return MazeUTModel(input_channels=3, hidden_dim=128, max_steps=4, nhead=4, height=size, width=size)
     elif model=="ut_act":
-        return MazeUTModelACT(input_channels=3, hidden_dim=128, max_steps=10, nhead=4, height=24, width=24, out_channels=2, ponder_epsilon=0.01, time_penalty=0.01)
+        return MazeUTModelACT(input_channels=3, hidden_dim=128, max_steps=10, nhead=4, height=size, width=size, out_channels=2, ponder_epsilon=0.01, time_penalty=0.01)
     else:
         raise ValueError(f"Unknown model: {model}")
 

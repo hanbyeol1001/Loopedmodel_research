@@ -41,7 +41,7 @@ def main():
     parser.add_argument("--checkpoint", default="check_default", type=str,
                         help="where to save the network")
     parser.add_argument("--data_path", default="../data", type=str, help="path to data files")
-    parser.add_argument("--depth", default=1, type=int, help="depth of the network")
+    # parser.add_argument("--depth", default=1, type=int, help="depth of the network")
     parser.add_argument("--epochs", default=200, type=int, help="number of epochs for training")
     parser.add_argument("--lr", default=0.001, type=float, help="learning rate")
     parser.add_argument("--lr_factor", default=0.1, type=float, help="learning rate decay factor")
@@ -67,7 +67,7 @@ def main():
     parser.add_argument("--train_mode", default="default", type=str, help="training mode")
     parser.add_argument("--val_period", default=20, type=int, help="how often to validate")
     parser.add_argument("--warmup_period", default=5, type=int, help="warmup period")
-    parser.add_argument("--width", default=2, type=int, help="width of the network")
+    # parser.add_argument("--width", default=2, type=int, help="width of the network")
     parser.add_argument("--test_maze_size", default=13, type=int, help="test_maze_size") 
     parser.add_argument("--train_maze_size", default=13, type=int, help="train_maze_size")
     parser.add_argument("--val_ratio", default=0.2, type=float,
@@ -123,7 +123,7 @@ def main():
         start_epoch += 1
 
     else:
-        net = get_model(args.model, args.width, args.depth)
+        net = get_model(args.model, args.train_maze_size)
         start_epoch = 0
         optimizer_state_dict = None
 

@@ -19,35 +19,64 @@ from tqdm import tqdm
 
 from models.recur_resnet_segment import recur_resnet 
 # from models.resnet_segment import ff_resnet
-from models.recur_resnet_act import RecurResNetACT, BasicBlock, recur_resnet_act
+from models.recur_resnet_act import RecurResNetACT, BasicBlock 
 
 
-def get_dataloaders(train_batch_size, test_batch_size, train_maze_size=9, test_maze_size=9, shuffle=True):
+class NumpyMazeDataset(data.Dataset):
+    def __init__(self, inputs_path, solutions_path):
+        self.inputs = np.load(inputs_path)       # (N, 3, H, W)
+        self.solutions = np.load(solutions_path) # (N, H, W)
 
-    train_data = MazeDataset("./data", size=train_maze_size, train=True)
-    test_data = MazeDataset("./data", size=test_maze_size, train=False)
+    def __len__(self):
+        return len(self.inputs)
 
-    trainloader = data.DataLoader(train_data, num_workers=4, batch_size=train_batch_size,
-                                   shuffle=shuffle, drop_last=True)
-    testloader = data.DataLoader(test_data, num_workers=4, batch_size=test_batch_size,
-                                   shuffle=False, drop_last=False)
+    def __getitem__(self, idx):
+        x = torch.tensor(self.inputs[idx], dtype=torch.float32)
+        y = torch.tensor(self.solutions[idx], dtype=torch.float32)
+        return x, y
+
+
+# def get_dataloaders(train_batch_size, test_batch_size, train_maze_size=9, test_maze_size=9, shuffle=True):
+
+#     train_data = MazeDataset("./data", size=train_maze_size, train=True)
+#     test_data = MazeDataset("./data", size=test_maze_size, train=False)
+
+#     trainloader = data.DataLoader(train_data, num_workers=4, batch_size=train_batch_size,
+#                                    shuffle=shuffle, drop_last=True)
+#     testloader = data.DataLoader(test_data, num_workers=4, batch_size=test_batch_size,
+#                                    shuffle=False, drop_last=False)
+#     return trainloader, testloader
+
+def get_dataloaders(train_batch_size,test_batch_size,train_maze_size=9,
+    test_maze_size=9,shuffle=True,data_root="../data"):
+    # 학습 데이터셋 경로
+    train_inputs_path = f"{data_root}/maze_data_train_{train_maze_size}/inputs.npy"
+    train_solutions_path = f"{data_root}/maze_data_train_{train_maze_size}/solutions.npy"
+
+    # 테스트 데이터셋 경로
+    test_inputs_path = f"{data_root}/maze_data_test_{test_maze_size}/inputs.npy"
+    test_solutions_path = f"{data_root}/maze_data_test_{test_maze_size}/solutions.npy"
+
+    # Dataset 객체
+    train_data = NumpyMazeDataset(train_inputs_path, train_solutions_path)
+    test_data = NumpyMazeDataset(test_inputs_path, test_solutions_path)
+
+    # DataLoader
+    trainloader = data.DataLoader(train_data, batch_size=train_batch_size,
+                                  shuffle=shuffle, drop_last=True, num_workers=0)
+    testloader = data.DataLoader(test_data, batch_size=test_batch_size,
+                                 shuffle=False, drop_last=False, num_workers=0)
+
     return trainloader, testloader
 
 
 def get_model(model, width, depth):
     model = model.lower()
     # RecurResNetACT 모델을 직접 반환하도록 수정 (만약 recur_resnet_segment에 RecurResNetACT가 없다면)
-    # if model == "recur_resnet_act":
-    #     net = RecurResNetACT(BasicBlock, [2], depth=depth, width=width) 
-    # else:
-    #     net = eval(model)(depth=depth, width=width)
     if model == "recur_resnet_act":
-        net = recur_resnet_act(
-            depth, width, ponder_epsilon=0.01, time_penalty=0.005, max_iters=int((depth - 4) // 4)
-            )
-
-    elif model == "recur_resnet":
-        net = recur_resnet(depth, width)
+        net = RecurResNetACT(BasicBlock, [2], depth=depth, width=width) 
+    else:
+        net = eval(model)(depth=depth, width=width)
     return net
 
 
@@ -55,7 +84,7 @@ def get_optimizer(optimizer_name, model, net, lr):
     optimizer_name = optimizer_name.lower()
     model = model.lower()
 
-    if "act" in model:
+    if "recur" in model:
         # 모델 파라미터에서 recur_block에 해당하는 파라미터만 분리
         base_params = [p for n, p in net.named_parameters() if "recur_block" not in n]
         recur_params = [p for n, p in net.named_parameters() if "recur_block" in n]
@@ -194,16 +223,13 @@ def test_default(net, testloader, device, tta_steps=5, lr=1e-2, title="Halting S
             # eps = set_dynamic_ponder_epsilon(net, inputs) # 이건 동적 epsilon
             # print(f"[Dynamic ε] adjusted to {eps:.5f} based on input complexity")
 
-            out = net(inputs)
-            if isinstance(out, tuple):
-                weighted_output, _ = out
-                all_stopped_at_steps.extend(net.stopped_at_step.cpu().tolist())
-            else:
-                weighted_output = out
+            weighted_output, _ = net(inputs)
 
             predicted = weighted_output.argmax(1) * inputs.max(1)[0]
             correct += torch.amin(predicted == targets.squeeze(1), dim=[1, 2]).sum().item()
             total += targets.size(0)
+
+            all_stopped_at_steps.extend(net.stopped_at_step.cpu().tolist())
 
     os.makedirs(save_dir, exist_ok=True)
     
@@ -212,13 +238,7 @@ def test_default(net, testloader, device, tta_steps=5, lr=1e-2, title="Halting S
     
     # 저장 (npy + txt)
     np.save(os.path.join(save_dir, "halting_steps.npy"), steps_array) # 급하게 돌려본거라 돌리고나서 size랑 모델 이름에 넣어서 바꿔줘야함!!!!
-    if hasattr(net, "last_num_steps") and net.last_num_steps is not None:
-        print(f"[Train Epoch] Avg halting steps this epoch: {float(net.last_num_steps):.2f}")
-    elif hasattr(net, "iters"):
-        print(f"[Train Epoch] Avg halting steps this epoch: {net.iters} (fixed)")
-    else:
-        print(f"[Train Epoch] Avg halting steps this epoch: N/A")
-
+    print(f"[Train Epoch] Avg halting steps this epoch: {net.last_num_steps:.2f}")
     accuracy = 100.0 * correct / total
     print(f"[Test] Accuracy: {accuracy:.2f}%")
     return accuracy
@@ -388,12 +408,12 @@ def to_log_file(out_dict, out_dir, log_name="log.txt"):
     print("logging done in " + out_dir + ".")
 
 
-def train(net, trainloader, mode, optimizer_obj, device, epoch):
-    train_loss, acc, net = eval(f"train_{mode}")(net, trainloader, optimizer_obj, device, epoch)
+def train(net, trainloader, mode, optimizer_obj, device):
+    train_loss, acc, net = eval(f"train_{mode}")(net, trainloader, optimizer_obj, device)
     return train_loss, acc, net
 
 
-def train_default(net, trainloader, optimizer_obj, device, epoch):
+def train_default(net, trainloader, optimizer_obj, device):
     # 초기 설정
     net.train()  # 모델을 학습 모드로 전환
     net = net.to(device)  # GPU 또는 CPU로 모델 이동
@@ -403,15 +423,14 @@ def train_default(net, trainloader, optimizer_obj, device, epoch):
     warmup_scheduler = optimizer_obj.warmup
 
     criterion = torch.nn.CrossEntropyLoss(reduction="none")  # 픽셀 단위 손실 계산 가능.
-    
-    time_penalty = getattr(net, "time_penalty", 0.0)  # 조정 가능한 시간 패널티 계수(수식에서 람다 역할)
+    time_penalty = net.time_penalty  # 조정 가능한 시간 패널티 계수(수식에서 람다 역할)
     
     # 손실, 정확도, 픽셀 수, ponder cost 누적을 위한 변수 초기화
     train_loss = 0
     correct = 0
     total = 0
     total_pixels = 0
-    total_ponder_cost = 0  # (있으면)Ponder cost 추적 추가
+    total_ponder_cost = 0  # Ponder cost 추적 추가
     
     # 미니배치 루프
     torch.set_printoptions(profile="full")
@@ -422,38 +441,28 @@ def train_default(net, trainloader, optimizer_obj, device, epoch):
         optimizer.zero_grad()
         
         # 모델 forward
-        out = net(inputs)
-        if isinstance(out, tuple):
-            weighted_output, avg_ponder_cost = out
-        else:
-            weighted_output = out
-            avg_ponder_cost = torch.tensor(0.0, device=weighted_output.device)
+        weighted_output, avg_ponder_cost = net(inputs)
 
-        # --- sanity checks: 출력 finite ---
-        if not torch.isfinite(weighted_output).all():
-            # 문제가 있는 배치는 건너뜀
-            print(f"[Warning][Epoch {epoch} | Batch {batch_idx}] Non-finite values detected in model output. Skipping this batch.")
-            continue
-
-        # 출력 형태 재구성 (픽셀 단위 CE 위해)
+        # 출력 형태 재구성
         n, c, h, w = weighted_output.size()
         # (B, C, H, W) → (B*H*W, C)
         reshaped_outputs = weighted_output.permute(0, 2, 3, 1).contiguous().view(-1, c)
         
-        # 유효 픽셀 마스킹 (-1 라벨 무시)
+        # 유효 픽셀 마스킹 
         mask = (targets >= 0).squeeze(1)
         reshaped_targets = targets.squeeze(1)[mask].view(-1)
         
-        # 경로 마스크 계산: 입력 평균 밝기 > 0 인 위치만 학습
-        reshaped_inputs = inputs.permute(0, 2, 3, 1).contiguous().mean(dim=3, keepdim=True)
+        # 경로 마스크 계산
+        reshaped_inputs = inputs.permute(0, 2, 3, 1).contiguous()
+        reshaped_inputs = reshaped_inputs.mean(dim=3, keepdim=True)
         reshaped_inputs = reshaped_inputs[mask].view(-1, 1)
         path_mask = (reshaped_inputs > 0).squeeze()
 
-        # Task loss (경로 픽셀만 평균)
+        # Task loss 계산
         task_loss = criterion(reshaped_outputs, reshaped_targets)
         task_loss = task_loss[path_mask].mean()
         
-        # 총 손실 = CE + (있으면) ponder cost
+        # 전체 손실 계산
         total_loss = task_loss + time_penalty * avg_ponder_cost
         total_loss.backward()
         
@@ -461,30 +470,26 @@ def train_default(net, trainloader, optimizer_obj, device, epoch):
         torch.nn.utils.clip_grad_norm_(net.parameters(), 1.0)
         optimizer.step()
 
-        # 통계 집계: loss 계산은 픽셀 단위로
+        # loss 계산은 픽셀 단위로
         train_loss += task_loss.item() * path_mask.size(0)
         total_ponder_cost += avg_ponder_cost.item() * inputs.size(0)
         total_pixels += path_mask.size(0)
 
-        # 정확도 계산 (이미지 단위 all-correct 기준: amin)
+        # 정확도 계산
         targets = targets.squeeze(1)
         predicted = weighted_output.argmax(1) * inputs.max(1)[0]
         correct += torch.amin(predicted == targets, dim=[1, 2]).sum().item()
         total += targets.size(0)
 
-    train_loss = train_loss / max(1, total_pixels)
-    acc = 100.0 * correct / max(1, total_pixels)
-
+    train_loss = train_loss / total_pixels
+    acc = 100.0 * correct / total
     lr_scheduler.step()
     warmup_scheduler.dampen()
 
-    if hasattr(net, "last_num_steps"):
-        print(f"[Train Epoch] Avg halting steps this epoch: {net.last_num_steps:.2f}")
-    if hasattr(net, "stopped_at_step"):
-        print(f"[Train Epoch] Sample stopped_at_step[:10]: {net.stopped_at_step[:10].cpu().tolist()}")
+    print(f"[Train Epoch] Avg halting steps this epoch: {net.last_num_steps:.2f}")
+    print(f"[Train Epoch] Sample stopped_at_step[:10]: {net.stopped_at_step[:10].cpu().tolist()}")
 
     return train_loss, acc, net
-
 
 class AllLogger:
     def __init__(self, filepath):

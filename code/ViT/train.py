@@ -4,6 +4,7 @@ import sys
 from collections import OrderedDict
 import copy
 
+import datetime
 from icecream import ic
 import numpy as np
 import torch
@@ -27,6 +28,7 @@ def extract_width_depth_from_filename(filename):
         raise ValueError(f"Filename {filename} does not contain 'depth=' and 'width=' pattern.")
 
 def main():
+    start_time = datetime.datetime.now()
 
     print("\n_________________________________________________\n")
     print(now(), "train.py main() running.")
@@ -62,7 +64,7 @@ def main():
     parser.add_argument("--val_period", default=20, type=int, help="how often to validate")
     parser.add_argument("--warmup_period", default=5, type=int, help="warmup period")
     parser.add_argument("--width", default=2, type=int, help="width of the network")
-    parser.add_argument("--test_maze_size", default=13, type=int, help="test_maze_size")
+    parser.add_argument("--test_maze_size", default=9, type=int, help="test_maze_size")
     parser.add_argument("--train_maze_size", default=9, type=int, help="train_maze_size")
 
     args = parser.parse_args()
@@ -271,6 +273,7 @@ def main():
     print(f"{now()} Testing accuracy: {test_acc}")
 
     model_name_str = f"{args.model}_depth={args.depth}_width={args.width}"
+    end_time = datetime.datetime.now()
     stats = OrderedDict([("epochs", args.epochs),
                          ("learning rate", args.lr),
                          ("lr", args.lr),
@@ -283,7 +286,10 @@ def main():
                          ("test_mode", args.test_mode),
                          ("train_acc", train_acc),
                          ("train_batch_size", args.train_batch_size),
-                         ("train_mode", args.train_mode)])
+                         ("train_mode", args.train_mode),
+                         ("start_time", start_time.strftime("%Y-%m-%d %H:%M:%S")),
+                         ("end_time", end_time.strftime("%Y-%m-%d %H:%M:%S")),
+                         ("elapsed_time", str(end_time - start_time))])
 
     if args.save_json:
         to_json(stats, args.output)

@@ -1,4 +1,3 @@
-import math
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -7,14 +6,13 @@ class BasicBlock(nn.Module):
     """Basic residual block class"""
     expansion = 1
 
-    def __init__(self, in_planes, planes, stride=1, iters=1):
+    def __init__(self, in_planes, planes, stride=1):
         '''
         conv1: 3x3, stride=stride, padding=1
         conv2: 3x3, stride=1, padding=1
         shortcut: (stride!=1 or 채널 다르면) 1x1 conv, 아니면 id
         '''
         super(BasicBlock, self).__init__()
-        self.iters = iters   # 반복 횟수 받아옴
         self.conv1 = nn.Conv2d(
             in_planes, planes, kernel_size=3, stride=stride, padding=1, bias=False)
 
@@ -31,8 +29,7 @@ class BasicBlock(nn.Module):
     def forward(self, x):
         out = F.relu(self.conv1(x))
         out = self.conv2(out)
-        # residual scaling 적용
-        out += self.shortcut(x) / math.sqrt(self.iters)
+        out += self.shortcut(x)
         out = F.relu(out)
         return out
 
@@ -43,7 +40,6 @@ class RecurResNet(nn.Module):
     def __init__(self, block, num_blocks, depth, width=1):
         super(RecurResNet, self).__init__()
         self.iters = int((depth - 4) // 4)
-        self.iters = max(1, self.iters)
         self.in_planes = int(width*64)
         self.conv1 = nn.Conv2d(3, int(width * 64), kernel_size=3,
                                stride=1, padding=1, bias=False)
@@ -63,19 +59,19 @@ class RecurResNet(nn.Module):
         strides = [stride] + [1]*(num_blocks-1)
         layers = []
         for strd in strides:
-            layers.append(block(self.in_planes, planes, strd, iters=self.iters))
+            layers.append(block(self.in_planes, planes, strd))
             self.in_planes = planes * block.expansion
         return nn.Sequential(*layers)
 
     def forward(self, x):
-        last = None
+        self.thoughts = torch.zeros((self.iters, x.shape[0], 2, x.shape[2], x.shape[3])).to(x.device)
         out = F.relu(self.conv1(x))
         for i in range(self.iters):
             out = self.recur_block(out)  # 공유된 두 개의 BasicBlock 반복
             thought = F.relu(self.conv2(out))
             thought = F.relu(self.conv3(thought))
-            last = self.conv4(thought)  # 각 출력(2채널 출력)을 저장하지만, 
-        return last  # 최종적으로는 마지막 step만 반환
+            self.thoughts[i] = self.conv4(thought)  # 각 출력(2채널 출력)을 저장하지만, 
+        return self.thoughts[-1]  # 최종적으로는 마지막 step만 반환
 
 
 def recur_resnet(depth, width):

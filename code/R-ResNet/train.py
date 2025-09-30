@@ -15,7 +15,7 @@ from models.recur_resnet_act import recur_resnet_act
 
 import warmup
 from utils import train, test, OptimizerWithSched, load_model_from_checkpoint, \
-    get_dataloaders, to_json, get_optimizer, to_log_file, now, get_model, AllLogger
+    get_dataloaders, to_json, get_optimizer, to_log_file, now, get_model, AllLogger, NumpyMazeDataset
 
 def main():
     print("\n_________________________________________________\n")
@@ -44,12 +44,12 @@ def main():
     parser.add_argument("--test_batch_size", default=500, type=int, help="batch size for testing")
     parser.add_argument("--test_iterations", default=None, type=int,
                         help="how many, if testing with a different number iterations")
-    parser.add_argument("--test_mode", default="default", type=str, help="testing mode")
+    parser.add_argument("--test_mode", default="default", type=str, help="testing mode")  # 테스트 모드: 왜 있는 지 모르겠음
     parser.add_argument("--train_batch_size", default=128, type=int,
                         help="batch size for training")
     parser.add_argument("--train_log", default="train_log.txt", type=str,
                         help="name of the log file")
-    parser.add_argument("--train_mode", default="default", type=str, help="training mode") 
+    parser.add_argument("--train_mode", default="default", type=str, help="training mode")  # 훈련 모드: 왜 있는 지 모르겠음
     parser.add_argument("--val_period", default=20, type=int, help="how often to validate")  # 검증 주기 (에폭 단위)
     parser.add_argument("--warmup_period", default=5, type=int, help="warmup period")  # warmup 적용 에폭 수: 뭔지 잘 모르겠음
     parser.add_argument("--width", default=4, type=int, help="width of the network")  # 모델 너비
@@ -100,9 +100,8 @@ def main():
         start_epoch += 1
 
     else:
-        # net = recur_resnet_act(args.depth, args.width, ponder_epsilon=0.01, time_penalty=0.005, max_iters=int((args.depth - 4) // 4))
-        net = get_model(args.model, args.width, args.depth)
-        print(f'max_iters: {int((args.depth - 4) // 4)}')
+        net = recur_resnet_act(args.depth, args.width, ponder_epsilon=0.01, time_penalty=0.005, max_iters=int((args.depth - 4) // 4))
+        print(int((args.depth - 4) // 4))
         start_epoch = 0
         optimizer_state_dict = None
 
@@ -143,7 +142,7 @@ def main():
     check = 0
 
     for epoch in range(start_epoch, args.epochs):
-        loss, acc, net = train(net, trainloader, args.train_mode, optimizer_obj, device, epoch)
+        loss, acc, net = train(net, trainloader, args.train_mode, optimizer_obj, device)
 
         train_losses.append(loss)    
         train_accuracies.append(acc)  
@@ -167,18 +166,18 @@ def main():
         # validation
         if (epoch + 1) % args.val_period == 0:
             train_acc = test(net, trainloader, args.test_mode, device)
-            # test_acc = test(net, testloader, args.test_mode, device)
+            test_acc = test(net, testloader, args.test_mode, device)
 
             print(f"Val_period")
-            print(f"{now()} Validation accuracy: {train_acc}")
-            # print(f"{now()} Testing accuracy: {test_acc}")
-            # writer.add_scalar("Accuracy/test_acc_in_training", test_acc, epoch)
+            print(f"{now()} Training accuracy: {train_acc}")
+            print(f"{now()} Testing accuracy: {test_acc}")
+            writer.add_scalar("Accuracy/test_acc_in_training", test_acc, epoch)
 
-            # stats = [train_acc, test_acc]
-            # stat_names = ["train_acc", "test_acc"]
-            # for stat_idx, stat in enumerate(stats):
-            #     stat_name = os.path.join("val", stat_names[stat_idx])
-            #     writer.add_scalar(stat_name, stat, epoch)
+            stats = [train_acc, test_acc]
+            stat_names = ["train_acc", "test_acc"]
+            for stat_idx, stat in enumerate(stats):
+                stat_name = os.path.join("val", stat_names[stat_idx])
+                writer.add_scalar(stat_name, stat, epoch)
 
         # 모델 저장
         if (epoch + 1) % args.save_period == 0 or (epoch + 1) == args.epochs or check >= 10:
@@ -290,4 +289,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

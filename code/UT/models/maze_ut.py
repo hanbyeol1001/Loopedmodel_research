@@ -49,38 +49,30 @@ class SharedTransformerBlock(nn.Module):
             d_model=hidden_dim, nhead=nhead, batch_first=True, dropout=0.1
         )
 
-    def forward(self, x, steps):
-        thoughts = []
-        for _ in range(steps):
-            x = self.block(x)  # PreNorm 구조(기본)에서 MHSA→FFN이 내부에 포함됨
-            thoughts.append(x)
-        return x, torch.stack(thoughts)
+    def forward(self, x):
+        return self.block(x)
 
 # ====== MazeUTModel: CNN Encoder + Transformer + Linear Decoder ======
 class MazeUTModel(nn.Module):
-    def __init__(self, input_channels=3, hidden_dim=128, max_steps=4, nhead=4, height=32, width=32):
+    def __init__(self, input_channels=3, hidden_dim=128, max_steps=4, nhead=4, height=24, width=24):
         super().__init__()
         self.encoder = UnifiedEncoder(input_channels, hidden_dim)
+        self.transformer = SharedTransformerBlock(hidden_dim, nhead)  # Transformer Block (shared)
+        self.decoder = nn.Sequential(
+            nn.Conv2d(hidden_dim, hidden_dim // 2, kernel_size=3, stride=1, padding=1),
+            nn.ReLU(),
+            nn.Conv2d(hidden_dim // 2, hidden_dim // 4, kernel_size=3, stride=1, padding=1),
+            nn.ReLU(),
+            nn.Conv2d(hidden_dim // 4, 2, kernel_size=1)
+        )
         self.height = height
         self.width = width
         self.hidden_dim = hidden_dim
-        self.max_steps = max_steps
-        self.iters=max_steps
+        self.max_iters=max_steps
 
         # Positional Encoding (Learnable)
         self.pos_embed = nn.Parameter(torch.randn(1, height * width, hidden_dim))
 
-        # Transformer Block (shared)
-        self.transformer = SharedTransformerBlock(hidden_dim, nhead)
-
-        # Linear Decoder (사실상 CNN 디코더)
-        self.decoder = nn.Sequential(
-            nn.Conv2d(hidden_dim, hidden_dim // 2, kernel_size=3, padding=1),
-            nn.ReLU(),
-            nn.Conv2d(hidden_dim // 2, hidden_dim // 4, kernel_size=3, padding=1),
-            nn.ReLU(),
-            nn.Conv2d(hidden_dim // 4, 2, kernel_size=1)
-        )
 
     def forward(self, x, return_all_steps=False):
         B = x.size(0)
@@ -96,8 +88,8 @@ class MazeUTModel(nn.Module):
         thoughts = []
 
         # 3) Iterative Transformer Steps (UT)
-        for _ in range(self.max_steps):
-            x, _ = self.transformer(x, steps=1)  # shared block 1회 적용
+        for _ in range(self.max_iters):
+            x = self.transformer(x)  # shared block 1회 적용
             # decoded = self.decoder(x)  # (B, H*W, 2)
             # decoded = decoded.view(B, H, W, 2).permute(0, 3, 1, 2)  # (B, 2, H, W)
 

@@ -9,6 +9,8 @@ import os
 import sys
 from dataclasses import dataclass
 import math
+import numpy as np
+import random
 
 # If running headless or MPLBACKEND is set to a Jupyter-only backend, force Agg
 if not os.environ.get("DISPLAY") or os.environ.get("MPLBACKEND", "").startswith("module://"):
@@ -21,7 +23,6 @@ from matplotlib.colors import LinearSegmentedColormap
 from easy_to_hard_data import MazeDataset
 import torch
 import torch.utils.data as data
-from icecream import ic
 from torch.optim import SGD, Adam, AdamW
 from tqdm import tqdm
 from icecream import ic
@@ -29,8 +30,18 @@ from icecream import ic
 
 from models.maze_ut import MazeUTModel
 from models.ut_act import MazeUTModelACT
+from torch.utils.data import DataLoader, random_split
 
-from train import train_default, train_act
+
+def set_seed(seed=42):
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed(seed)
+        torch.cuda.manual_seed_all(seed)
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
 
 
 # Ignore statemenst for pylint:
@@ -41,25 +52,104 @@ from train import train_default, train_act
 # pylint: disable=R0912, R0915, E1101, E1102, C0103, W0702, R0914, C0116, C0115, W0611
 
 
-def get_dataloaders(train_batch_size, test_batch_size, train_maze_size=9, test_maze_size=9, shuffle=True):
+# def get_dataloaders(train_batch_size, test_batch_size, train_maze_size=9, test_maze_size=9, shuffle=True):
 
-    train_data = MazeDataset("./data", size=train_maze_size, train=True)
-    test_data = MazeDataset("./data", size=test_maze_size, train=False)
+#     train_data = MazeDataset("./data", size=train_maze_size, train=True)
+#     test_data = MazeDataset("./data", size=test_maze_size, train=False)
 
-    trainloader = data.DataLoader(train_data, num_workers=4, batch_size=train_batch_size,
-                                  shuffle=shuffle, drop_last=True)
-    testloader = data.DataLoader(test_data, num_workers=4, batch_size=test_batch_size,
-                                 shuffle=False, drop_last=False)
-    return trainloader, testloader
+#     trainloader = data.DataLoader(train_data, num_workers=0, batch_size=train_batch_size,
+#                                   shuffle=shuffle, drop_last=True)
+#     testloader = data.DataLoader(test_data, num_workers=0, batch_size=test_batch_size,
+#                                  shuffle=False, drop_last=False)
+#     return trainloader, testloader
+
+
+# def get_dataloaders(train_batch_size,test_batch_size,train_maze_size=9,
+#     test_maze_size=9,shuffle=True,data_root="../data"):
+#     # 학습 데이터셋 경로
+#     train_inputs_path = f"{data_root}/maze_data_train_{train_maze_size}/inputs.npy"
+#     train_solutions_path = f"{data_root}/maze_data_train_{train_maze_size}/solutions.npy"
+
+#     # 테스트 데이터셋 경로
+#     test_inputs_path = f"{data_root}/maze_data_test_{test_maze_size}/inputs.npy"
+#     test_solutions_path = f"{data_root}/maze_data_test_{test_maze_size}/solutions.npy"
+
+#     # Dataset 객체
+#     train_data = NumpyMazeDataset(train_inputs_path, train_solutions_path)
+#     test_data = NumpyMazeDataset(test_inputs_path, test_solutions_path)
+
+#     # DataLoader
+#     trainloader = data.DataLoader(train_data, batch_size=train_batch_size,
+#                                   shuffle=shuffle, drop_last=True, num_workers=0)
+#     testloader = data.DataLoader(test_data, batch_size=test_batch_size,
+#                                  shuffle=False, drop_last=False, num_workers=0)
+
+#     return trainloader, testloader
+
+class NumpyMazeDataset(data.Dataset):
+    def __init__(self, inputs_path, solutions_path):
+        self.inputs = np.load(inputs_path)       # (N, 3, H, W)
+        self.solutions = np.load(solutions_path) # (N, H, W)
+
+    def __len__(self):
+        return len(self.inputs)
+
+    def __getitem__(self, idx):
+        x = torch.tensor(self.inputs[idx], dtype=torch.float32)
+        y = torch.tensor(self.solutions[idx], dtype=torch.float32)
+        return x, y
+
+    
+def get_dataloaders(train_batch_size,
+                    test_batch_size,
+                    train_maze_size=9,
+                    test_maze_size=9,
+                    shuffle=True,
+                    data_root="../data",
+                    val_ratio=0.2,
+                    seed=42):
+    """
+    train/val/test DataLoader를 반환합니다.
+    val_ratio : train dataset 중 validation으로 쓸 비율 (0~1)
+    """
+
+    # 학습 데이터셋 경로
+    train_inputs_path = f"{data_root}/maze_data_train_{train_maze_size}/inputs.npy"
+    train_solutions_path = f"{data_root}/maze_data_train_{train_maze_size}/solutions.npy"
+
+    # 테스트 데이터셋 경로
+    test_inputs_path = f"{data_root}/maze_data_test_{test_maze_size}/inputs.npy"
+    test_solutions_path = f"{data_root}/maze_data_test_{test_maze_size}/solutions.npy"
+
+    # Dataset 객체
+    train_data = NumpyMazeDataset(train_inputs_path, train_solutions_path)
+    test_data = NumpyMazeDataset(test_inputs_path, test_solutions_path)
+
+    # === train/val split ===
+    val_size = int(len(train_data) * val_ratio)
+    train_size = len(train_data) - val_size
+    train_subset, val_subset = random_split(train_data, 
+                                            [train_size, val_size], 
+                                            generator=torch.Generator().manual_seed(seed))
+
+    # DataLoader
+    trainloader = DataLoader(train_subset, batch_size=train_batch_size,
+                             shuffle=shuffle, drop_last=True, num_workers=0)
+    valloader = DataLoader(val_subset, batch_size=test_batch_size,
+                           shuffle=False, drop_last=False, num_workers=0)
+    testloader = DataLoader(test_data, batch_size=test_batch_size,
+                            shuffle=False, drop_last=False, num_workers=0)
+
+    return trainloader, valloader, testloader
 
 
 def get_model(model, width, depth):
     """Function to load the Universal Transformer model"""
     model = model.lower()
     if model== "maze_ut":
-        return MazeUTModel(input_channels=3, hidden_dim=128, max_steps=4, nhead=4, height=32, width=32)
+        return MazeUTModel(input_channels=3, hidden_dim=128, max_steps=4, nhead=4, height=24, width=24)
     elif model=="ut_act":
-        return MazeUTModelACT(input_channels=3, hidden_dim=128, max_steps=10, nhead=4, height=32, width=32, out_channels=2, ponder_epsilon=0.01, time_penalty=0.01)
+        return MazeUTModelACT(input_channels=3, hidden_dim=128, max_steps=10, nhead=4, height=24, width=24, out_channels=2, ponder_epsilon=0.01, time_penalty=0.01)
     else:
         raise ValueError(f"Unknown model: {model}")
 
@@ -158,47 +248,14 @@ def test_default(net, testloader, device):
 
             outputs = _ensure_logits(outputs) 
 
-            targets = targets.squeeze(1)
+            targets = targets.squeeze(1)          # [N, H, W]
+            # 예측 클래스 맵 [N, H, W]
             predicted = outputs.argmax(1) * inputs.max(1)[0]
+            # 샘플 단위 '완벽 일치' 여부. amin은 모든 픽셀 True여야 True가 됨
             correct += torch.amin(predicted == targets, dim=[1, 2]).sum().item()
             total += targets.size(0)
 
-    accuracy = 100.0 * correct / total
-    return accuracy
-
-
-def test_max_conf(net, testloader, device):
-
-    net.eval()
-    net.to(device)
-    correct = 0
-    confidence = torch.zeros(net.iters)
-    total = 0
-    total_pixels = 0
-    with torch.no_grad():
-        for batch_idx, (inputs, targets) in enumerate(testloader):
-
-            inputs, targets = inputs.to(device), targets.to(device).unsqueeze(1).long()
-            net(inputs)
-            confidence_array = torch.zeros(net.iters, inputs.size(0))
-            for i, thought in enumerate(net.thoughts):
-                conf = torch.nn.functional.softmax(thought.detach(), dim=1).max(1)[0] \
-                       * inputs.max(1)[0]
-                confidence[i] += conf.sum().item()
-                confidence_array[i] = conf.sum([1, 2]) / inputs.max(1)[0].sum([1, 2])
-
-            exit_iter = confidence_array.argmax(0)
-
-            best_thoughts = net.thoughts[exit_iter, torch.arange(net.thoughts.size(1))].squeeze()
-            if best_thoughts.shape[0] != inputs.shape[0]:
-                best_thoughts = best_thoughts.unsqueeze(0)
-            predicted = best_thoughts.argmax(1) * inputs.max(1)[0]
-            correct += torch.amin(predicted == targets, dim=[1, 2]).sum().item()
-
-            total_pixels += inputs.max(1)[0].sum().item()
-            total += targets.size(0)
-
-    accuracy = 100.0 * correct / total
+    accuracy = 100.0 * correct / total    # # = 완벽히 푼 샘플 비율(%)
     return accuracy
 
 
@@ -230,21 +287,6 @@ def to_log_file(out_dict, out_dir, log_name="log.txt"):
         fh.write(str(now()) + " " + str(out_dict) + "\n" + "\n")
 
     print("logging done in " + out_dir + ".")
-
-
-def train(net, trainloader, mode, optimizer_obj, device):
-    if mode == "default":
-        return train_default(net, trainloader, optimizer_obj, device)
-    elif mode == "act":
-        return train_act(net, trainloader, optimizer_obj, device)
-    else:
-        raise ValueError(f"Unknown training mode: {mode}")
-    # try:
-    #     train_loss, acc = eval(f"train_{mode}")(net, trainloader, optimizer_obj, device)
-    # except NameError:
-    #     print(f"{ic.format()}: train_{mode}() not implemented. Exiting.")
-    #     sys.exit()
-    return train_loss, acc
 
 
 def visualize_single_sample(input_img, confidences, target, batch_idx, cmap="magma", max_cols = 5, save_path = './iter_img'):
@@ -347,53 +389,5 @@ def test_max_conf(net, testloader, device):
 
     accuracy = 100.0 * correct / total
     return accuracy
-
-
-@torch.no_grad()
-def safe_pixel_accuracy(logits, targets, num_classes=None, ignore_index=-1, debug=False):
-    """
-    logits: [N,C,H,W] (raw scores)
-    targets: [N,H,W] (class indices, long)
-    """
-    if logits.dim() != 4:
-        raise ValueError(f"Expected logits [N,C,H,W], got {tuple(logits.shape)}")
-    if targets.dim() != 3:
-        raise ValueError(f"Expected targets [N,H,W], got {tuple(targets.shape)}")
-
-    C = logits.shape[1]
-    if num_classes is not None and num_classes != C:
-        # 모델 기준으로 맞춰줌
-        num_classes = C
-    elif num_classes is None:
-        num_classes = C
-
-    preds = logits.argmax(dim=1)  # [N,H,W]
-    targets = targets.long()
-
-    if ignore_index is not None:
-        mask = (targets != ignore_index)
-    else:
-        mask = torch.ones_like(targets, dtype=torch.bool)
-
-    valid = mask.sum().item()
-    if valid == 0:
-        # 전부 ignore면 0.0 반환 (여기서 0이 나오는지 확인)
-        if debug:
-            print("[DEBUG] All pixels ignored in this batch.")
-        return 0.0
-
-    correct = (preds[mask] == targets[mask]).sum().item()
-    acc = correct / valid
-
-    if debug:
-        pu = torch.unique(preds[mask]).tolist()
-        tu = torch.unique(targets[mask]).tolist()
-        print(f"[DEBUG] preds unique: {pu}")
-        print(f"[DEBUG] targets unique: {tu}")
-        print(f"[DEBUG] batch acc: {acc:.4f}")
-
-
-    return acc
-
 
 

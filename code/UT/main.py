@@ -1,5 +1,5 @@
 
-"""main.py
+"""train.py
    Train, test, and save models
    Developed as part of DeepThinking2 project
    April 2021
@@ -11,6 +11,7 @@ import sys
 from collections import OrderedDict
 import copy
 
+import datetime
 from icecream import ic
 import numpy as np
 import torch
@@ -18,8 +19,9 @@ from torch.optim.lr_scheduler import MultiStepLR, CosineAnnealingLR
 from torch.utils.tensorboard import SummaryWriter
 
 import warmup
-from utils import train, test, OptimizerWithSched, load_model_from_checkpoint, \
-    get_dataloaders, to_json, get_optimizer, to_log_file, now, get_model
+from utils import test, OptimizerWithSched, load_model_from_checkpoint, \
+    get_dataloaders, to_json, get_optimizer, to_log_file, now, get_model, set_seed
+from train import train
 
 
 # Ignore statements for pylint:
@@ -30,9 +32,10 @@ from utils import train, test, OptimizerWithSched, load_model_from_checkpoint, \
 
 
 def main():
+    start_time = datetime.datetime.now()
 
     print("\n_________________________________________________\n")
-    print(now(), "main.py main() running.")
+    print(now(), "train.py main() running.")
 
     parser = argparse.ArgumentParser(description="Deep Thinking")
     parser.add_argument("--checkpoint", default="check_default", type=str,
@@ -66,11 +69,18 @@ def main():
     parser.add_argument("--warmup_period", default=5, type=int, help="warmup period")
     parser.add_argument("--width", default=2, type=int, help="width of the network")
     parser.add_argument("--test_maze_size", default=13, type=int, help="test_maze_size") 
-    parser.add_argument("--train_maze_size", default=13, type=int, help="train_maze_size")  
+    parser.add_argument("--train_maze_size", default=13, type=int, help="train_maze_size")
+    parser.add_argument("--val_ratio", default=0.2, type=float,
+                    help="ratio of training data used for validation (0~1)")
+    parser.add_argument("--seed", default=42, type=int, help="random seed")
 
 
     args = parser.parse_args()
     print(args.shuffle)
+    
+    # 재현성을 위한 시드 고정
+    set_seed(args.seed)
+    
     args.train_mode, args.test_mode = args.train_mode.lower(), args.test_mode.lower()
     device = "cuda" if torch.cuda.is_available() else "cpu"
 
@@ -91,9 +101,10 @@ def main():
 
     ####################################################
     #               Dataset and Network and Optimizer
-    trainloader, testloader = get_dataloaders(
+    trainloader, valloader, testloader = get_dataloaders(
         args.train_batch_size, args.test_batch_size, args.train_maze_size,
-        args.test_maze_size, shuffle=args.shuffle)
+        args.test_maze_size, shuffle=args.shuffle, val_ratio=args.val_ratio, seed=args.seed)
+    
     print('dataset size 확인-------------------------------------------------')
     # trainloader에서 첫 번째 배치를 가져옵니다.
     inputs, targets = next(iter(trainloader))
@@ -206,13 +217,13 @@ def main():
         # 이 부분 잘 이해 못함 : 선택적으로 수행하는거 같아서 일단 skip
         if (epoch + 1) % args.val_period == 0:
             train_acc = test(net, trainloader, args.test_mode, device)
-            test_acc = test(net, testloader, args.test_mode, device)
+            val_acc = test(net, valloader, args.test_mode, device)
 
             print(f"{now()} Training accuracy: {train_acc}")
-            print(f"{now()} Testing accuracy: {test_acc}")
+            print(f"{now()} Validation accuracy: {val_acc}")
 
-            stats = [train_acc, test_acc]
-            stat_names = ["train_acc", "test_acc"]
+            stats = [train_acc, val_acc]
+            stat_names = ["train_acc", "val_acc"]
             for stat_idx, stat in enumerate(stats):
                 stat_name = os.path.join("val", stat_names[stat_idx])
                 writer.add_scalar(stat_name, stat, epoch)
@@ -261,6 +272,7 @@ def main():
     print(f"{now()} Testing accuracy: {test_acc}")
 
     model_name_str = f"{args.model}_depth={args.depth}_width={args.width}"
+    end_time = datetime.datetime.now()
     stats = OrderedDict([("epochs", args.epochs),
                          ("learning rate", args.lr),
                          ("lr", args.lr),
@@ -273,7 +285,10 @@ def main():
                          ("test_mode", args.test_mode),
                          ("train_acc", train_acc),
                          ("train_batch_size", args.train_batch_size),
-                         ("train_mode", args.train_mode)])
+                         ("train_mode", args.train_mode),
+                         ("start_time", start_time.strftime("%Y-%m-%d %H:%M:%S")),
+                         ("end_time", end_time.strftime("%Y-%m-%d %H:%M:%S")),
+                         ("elapsed_time", str(end_time - start_time))])
 
     if args.save_json:
         to_json(stats, args.output)
@@ -282,4 +297,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

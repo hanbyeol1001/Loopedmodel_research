@@ -16,13 +16,50 @@ import matplotlib.pyplot as plt
 from torch.utils.data import ConcatDataset, DataLoader
 import torch.utils.data as data
 
-def get_dataloaders(train_batch_size, test_batch_size, train_maze_size=9, test_maze_size=9, shuffle=True):
-    train_data = MazeDataset("./data", size=train_maze_size, train=True)
-    test_data = MazeDataset("./data", size=test_maze_size, train=False)
-    trainloader = data.DataLoader(train_data, num_workers=4, batch_size=train_batch_size,
-                                   shuffle=shuffle, drop_last=True)
-    testloader = data.DataLoader(test_data, num_workers=4, batch_size=test_batch_size,
-                                   shuffle=False, drop_last=False)
+# def get_dataloaders(train_batch_size, test_batch_size, train_maze_size=9, test_maze_size=9, shuffle=True):
+#     train_data = MazeDataset("./data", size=train_maze_size, train=True)
+#     test_data = MazeDataset("./data", size=test_maze_size, train=False)
+#     trainloader = data.DataLoader(train_data, num_workers=4, batch_size=train_batch_size,
+#                                    shuffle=shuffle, drop_last=True)
+#     testloader = data.DataLoader(test_data, num_workers=4, batch_size=test_batch_size,
+#                                    shuffle=False, drop_last=False)
+#     return trainloader, testloader
+
+
+class NumpyMazeDataset(data.Dataset):
+    def __init__(self, inputs_path, solutions_path):
+        self.inputs = np.load(inputs_path)       # (N, 3, H, W)
+        self.solutions = np.load(solutions_path) # (N, H, W)
+
+    def __len__(self):
+        return len(self.inputs)
+
+    def __getitem__(self, idx):
+        x = torch.tensor(self.inputs[idx], dtype=torch.float32)
+        y = torch.tensor(self.solutions[idx], dtype=torch.float32)
+        return x, y
+
+
+def get_dataloaders(train_batch_size,test_batch_size,train_maze_size=9,
+    test_maze_size=9,shuffle=True,data_root="../data"):
+    # 학습 데이터셋 경로
+    train_inputs_path = f"{data_root}/maze_data_train_{train_maze_size}/inputs.npy"
+    train_solutions_path = f"{data_root}/maze_data_train_{train_maze_size}/solutions.npy"
+
+    # 테스트 데이터셋 경로
+    test_inputs_path = f"{data_root}/maze_data_test_{test_maze_size}/inputs.npy"
+    test_solutions_path = f"{data_root}/maze_data_test_{test_maze_size}/solutions.npy"
+
+    # Dataset 객체
+    train_data = NumpyMazeDataset(train_inputs_path, train_solutions_path)
+    test_data = NumpyMazeDataset(test_inputs_path, test_solutions_path)
+
+    # DataLoader
+    trainloader = data.DataLoader(train_data, batch_size=train_batch_size,
+                                  shuffle=shuffle, drop_last=True, num_workers=0)
+    testloader = data.DataLoader(test_data, batch_size=test_batch_size,
+                                 shuffle=False, drop_last=False, num_workers=0)
+
     return trainloader, testloader
 
 # 모델 선택

@@ -116,16 +116,17 @@ def main():
 
     if args.model_path is not None:
         print(f"Loading model from checkpoint {args.model_path}...")
-        net, start_epoch, optimizer_state_dict = load_model_from_checkpoint(args.model,
-                                                                            args.model_path,
-                                                                            args.width,
-                                                                            args.depth)
+        net, start_epoch, optimizer_state_dict = load_model_from_checkpoint(
+            args.model,args.model_path, args.train_maze_size)
         start_epoch += 1
+        best_model_state = copy.deepcopy(net.state_dict())
 
     else:
+        print("Warning: best_model_state와 model_path 모두 없습니다. 랜덤 파라미터로 테스트합니다.")
         net = get_model(args.model, args.train_maze_size)
         start_epoch = 0
         optimizer_state_dict = None
+        best_model_state = copy.deepcopy(net.state_dict())
 
     net = net.to(device)
     pytorch_total_params = sum(p.numel() for p in net.parameters())
@@ -155,17 +156,7 @@ def main():
 
     best_acc = 0
     best_epoch = 0
-    best_model_state = None
     check = 0
-
-    if best_model_state is not None:
-        net.load_state_dict(best_model_state)
-    elif args.model_path is not None:
-        print("best_model_state가 None이므로, 체크포인트에서 모델을 불러옵니다.")
-        net, _, _ = load_model_from_checkpoint(args.model, args.model_path, args.width, args.depth)
-        best_model_state = copy.deepcopy(net.state_dict())  # ✅ 이 줄을 꼭 추가하세요
-    else:
-        print("Warning: best_model_state와 model_path 모두 없습니다. 랜덤 파라미터로 테스트합니다.")
     
     # # ===== debug 코드 시작 =====
     # batch = next(iter(trainloader))
@@ -236,14 +227,14 @@ def main():
                 "epoch": best_epoch,
                 "optimizer": optimizer.state_dict()
             }
+            time = start_time.strftime("%Y-%m-%d_%H-%M")  # 예: 2025-10-06_17-17
             out_str = os.path.join(args.checkpoint,
                                    f"{args.model}_{args.optimizer}"
-                                   f"_depth={args.depth}"
-                                   f"_width={args.width}"
                                    f"_lr={args.lr}"
                                    f"_batchsize={args.train_batch_size}"
                                    f"_at{best_epoch}"
                                    f"_epoch={args.epochs-1}"
+                                   f"_start={time}"
                                    f"_{array_task_id}.pth")
 
             print(f"{now()} Saving model to: ", args.checkpoint, " out_str: ", out_str)
@@ -271,7 +262,7 @@ def main():
     print(f"{now()} Training accuracy: {train_acc}")
     print(f"{now()} Testing accuracy: {test_acc}")
 
-    model_name_str = f"{args.model}_depth={args.depth}_width={args.width}"
+    model_name_str = f"{args.model}_depth={args.train_maze_size*2+6}_width={args.train_maze_size*2+6}"
     end_time = datetime.datetime.now()
     stats = OrderedDict([("epochs", args.epochs),
                          ("learning rate", args.lr),

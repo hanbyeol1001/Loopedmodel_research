@@ -65,14 +65,26 @@ class MazeUTModel(nn.Module):
             nn.ReLU(),
             nn.Conv2d(hidden_dim // 4, 2, kernel_size=1)
         )
-        self.height = height
-        self.width = width
         self.hidden_dim = hidden_dim
         self.max_iters=max_steps
 
         # Positional Encoding (Learnable)
         self.pos_embed = nn.Parameter(torch.randn(1, height * width, hidden_dim))
-
+        self.base_h, self.base_w = height, width  # 기준 크기(예: 24, 24) 저장
+    
+    def _resize_pos_embed(self, H, W):
+        """
+        (1, HW0, D) 형태의 learnable pos_embed를 (1, H*W, D)로 2D 보간하여 리턴
+        """
+        # (1, HW0, D) -> (1, D, base_h, base_w)
+        pos2d = self.pos_embed.view(1, self.base_h * self.base_w, self.hidden_dim)
+        pos2d = pos2d.view(1, self.base_h, self.base_w, self.hidden_dim).permute(0, 3, 1, 2)
+        # 2D 보간 (bicubic 권장)
+#         pos2d = F.interpolate(pos2d, size=(H, W), mode="bicubic", align_corners=False)
+        pos2d = F.interpolate(pos2d, size=(H, W), mode="nearest")
+        # (1, D, H, W) -> (1, H*W, D)
+        pos_new = pos2d.permute(0, 2, 3, 1).contiguous().view(1, H * W, self.hidden_dim)
+        return pos_new
 
     def forward(self, x, return_all_steps=False):
         B = x.size(0)
@@ -83,7 +95,9 @@ class MazeUTModel(nn.Module):
 
         # 2) Flatten and Add Positional Encoding: (B, H*W, hidden_dim)
         x = x.flatten(2).permute(0, 2, 1)     # (B, C, H*W) → (B, H*W, C) = (B, N, D)
-        x = x + self.pos_embed[:, :H * W, :]  # pos 추가 (길이 맞춰 슬라이스)
+        # 현재 H×W에 맞춘 pos_embed 생성
+        pos = self._resize_pos_embed(H, W).to(x.dtype).to(x.device)
+        x = x + pos  # pos 추가 (길이 맞춰 슬라이스)
 
         thoughts = []
 

@@ -184,8 +184,8 @@ def get_optimizer(optimizer_name, model, net, lr):
     return optimizer
 
 
-def load_model_from_checkpoint(model, model_path, width, depth):
-    net = get_model(model, width, depth)
+def load_model_from_checkpoint(model, model_path, size):
+    net = get_model(model, size)
     device = "cuda" if torch.cuda.is_available() else "cpu"
     state_dict = torch.load(model_path, map_location=device)
     net.load_state_dict(state_dict["net"])

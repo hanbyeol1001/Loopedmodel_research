@@ -1,133 +1,7 @@
-<<<<<<< HEAD:Capstone-2025-1-team3-main/UT/models/ut_act.py
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-class BasicBlock(nn.Module):
-    expansion = 1
-
-    def __init__(self, in_planes, planes, stride=1):
-        super().__init__()
-        self.conv1 = nn.Conv2d(in_planes, planes, 3, stride, 1, bias=False)
-        self.conv2 = nn.Conv2d(planes, planes, 3, 1, 1, bias=False)
-        self.shortcut = nn.Sequential()
-        if stride != 1 or in_planes != planes:
-            self.shortcut = nn.Conv2d(in_planes, planes, 1, stride, bias=False)
-
-    def forward(self, x):
-        out = F.relu(self.conv1(x))
-        out = self.conv2(out)
-        out += self.shortcut(x)
-        return F.relu(out)
-
-class UnifiedEncoder(nn.Module):
-    def __init__(self, input_channels=3, hidden_dim=128):
-        super().__init__()
-        width = hidden_dim // 64
-        self.conv1 = nn.Conv2d(input_channels, 64 * width, kernel_size=3, stride=1, padding=1, bias=False)
-        self.block1 = BasicBlock(64 * width, 64 * width)
-        self.block2 = BasicBlock(64 * width, 64 * width)
-
-    def forward(self, x):
-        x = F.relu(self.conv1(x))  # not inplace
-        x = self.block1(x)
-        x = self.block2(x)
-        return x
-
-class SharedTransformerBlock(nn.Module):
-    def __init__(self, hidden_dim, nhead=4):
-        super().__init__()
-        self.block = nn.TransformerEncoderLayer(d_model=hidden_dim, nhead=nhead, batch_first=True)
-
-    def forward(self, x):
-        return self.block(x)
-
-class MazeUTModelACT(nn.Module):
-    def __init__(self, input_channels=3, hidden_dim=128, max_steps=10, nhead=4, height=32, width=32, out_channels=2, ponder_epsilon=0.01, time_penalty=0.01):
-        super().__init__()
-        self.encoder = UnifiedEncoder(input_channels, hidden_dim)
-        self.transformer = SharedTransformerBlock(hidden_dim, nhead)
-        self.decoder_conv = nn.Sequential(
-            nn.Conv2d(hidden_dim, hidden_dim // 2, 3, 1, 1),
-            nn.ReLU(),
-            nn.Conv2d(hidden_dim // 2, hidden_dim // 4, 3, 1, 1),
-            nn.ReLU(),
-            nn.Conv2d(hidden_dim // 4, 2, 1)
-        )
-
-        self.hidden_dim = hidden_dim
-        self.height = height
-        self.width = width
-        self.max_iters = max_steps
-        self.ponder_epsilon = ponder_epsilon
-        self.time_penalty = time_penalty
-
-        self.sigmoid = nn.Sigmoid()
-        self.halt_fc = nn.Linear(hidden_dim, 1)
-
-        self.last_num_steps = 0
-        self.stopped_at_step = None
-        self.weighted_output_history = None
-
-    def forward(self, x):
-        B, _, H, W = x.size()
-        device = x.device
-        x = self.encoder(x)  # (B, C, H, W)
-        H, W = x.shape[2], x.shape[3]
-        x = x.flatten(2).permute(0, 2, 1)  # (B, H*W, C)
-        pos_embed = torch.randn(1, H * W, self.hidden_dim, device=device)
-        x = x + pos_embed
-
-        # 각 픽셀(토큰)마다 지금까지 멈춤에 쓴 가중치의 누적합. 처음은 0.
-        halting_prob = torch.zeros(B, H * W, device=device)
-        # 마지막 스텝에서 남은 조각(weight)의 기록용(후에 비용 계산에 쓰일 수 있음)
-        remainders = torch.zeros(B, H * W, device=device)
-        # 각 픽셀이 몇 번 업데이트(생각)했는지 카운트. 처음은 0.
-        n_updates = torch.zeros(B, H * W, device=device)
-        # 스텝마다 나온 출력(로짓)을 조금씩 합쳐 나갈 그릇. 마지막에 여기에 최종 결과가 들어감.
-        weighted_output = torch.zeros(B, 2, H, W, device=device)
-        # 아직 계산을 계속해야 하는 픽셀을 표시(처음엔 전부 True)
-        still_running = torch.ones(B, H * W, device=device, dtype=torch.bool)
-
-        # 매 스텝의 원시 출력을 모아두는 리스트(디버깅용/나중 분석용).
-        self.weighted_output_history = []
-
-        for step in range(self.max_iters):
-            x = self.transformer(x)  # (B, H*W, hidden_dim)
-            p = self.sigmoid(self.halt_fc(x)).squeeze(-1)  # (B, H*W)
-            p = torch.where(still_running, p, torch.zeros_like(p))
-
-            new_halted = (halting_prob + p * still_running.float() > 1 - self.ponder_epsilon) & still_running
-            still_running = still_running & ~new_halted
-
-            update_weights = torch.where(
-                new_halted,
-                (1 - halting_prob) / (p + 1e-8),
-                torch.ones_like(p)
-            )
-            update_weights = update_weights * p
-            halting_prob = halting_prob + update_weights
-            remainders = torch.where(new_halted, 1 - halting_prob, remainders)
-            n_updates = n_updates + still_running.float() + new_halted.float()
-
-            x_reshaped = x.permute(0, 2, 1).reshape(B, self.hidden_dim, H, W)
-            out = self.decoder_conv(x_reshaped)
-            self.weighted_output_history.append(out)
-
-            weighted_output += out * update_weights.view(B, 1, H, W)
-
-            if still_running.sum() == 0:
-                break
-
-        self.last_num_steps = n_updates.mean().item()
-        self.stopped_at_step = n_updates.view(B, H, W).mean(dim=(1, 2))
-        avg_ponder_cost = n_updates.mean()
-
-        return weighted_output, avg_ponder_cost
-=======
-import torch
-import torch.nn as nn
-import torch.nn.functional as F
 
 class BasicBlock(nn.Module):
     expansion = 1
@@ -137,6 +11,7 @@ class BasicBlock(nn.Module):
         self.conv1 = nn.Conv2d(in_planes, planes, 3, stride, 1, bias=False)
         self.conv2 = nn.Conv2d(planes, planes, 3, 1, 1, bias=False)
         self.dropout = nn.Dropout2d(p=0.1)
+        
         self.shortcut = nn.Sequential()
         if stride != 1 or in_planes != planes:
             self.shortcut = nn.Conv2d(in_planes, planes, 1, stride, bias=False)
@@ -148,6 +23,7 @@ class BasicBlock(nn.Module):
         out = F.relu(out)
         return self.dropout(out)
 
+    
 class UnifiedEncoder(nn.Module):
     def __init__(self, input_channels=3, hidden_dim=128):
         super().__init__()
@@ -161,22 +37,25 @@ class UnifiedEncoder(nn.Module):
         x = F.relu(self.conv1(x))  # not inplace
         x = self.dropout1(x)
         x = self.block1(x)
-        return self.block2(x)
+        x = self.block2(x)
+        return x
 
+    
 class SharedTransformerBlock(nn.Module):
     def __init__(self, hidden_dim, nhead=4):
         super().__init__()
-        self.block = nn.TransformerEncoderLayer(
-            d_model=hidden_dim, nhead=nhead, batch_first=True, dropout=0.1
-        )
+        self.block = nn.TransformerEncoderLayer(d_model=hidden_dim, nhead=nhead, batch_first=True,
+                                               dropout=0.1)
 
     def forward(self, x):
         return self.block(x)
 
+    
 class MazeUTModelACT(nn.Module):
     def __init__(
-        self, input_channels=3, hidden_dim=128, max_steps=10, nhead=4, 
-        height=24, width=24, out_channels=2, ponder_epsilon=0.01, time_penalty=0.01
+        self, input_channels=3, hidden_dim=128, max_steps=10, 
+        nhead=4, height=32, width=32, out_channels=2, ponder_epsilon=0.01, 
+        time_penalty=0.01
     ):
         super().__init__()
         self.encoder = UnifiedEncoder(input_channels, hidden_dim)
@@ -190,8 +69,6 @@ class MazeUTModelACT(nn.Module):
         )
 
         self.hidden_dim = hidden_dim
-        self.height = height
-        self.width = width
         self.max_iters = max_steps
         self.ponder_epsilon = ponder_epsilon
         self.time_penalty = time_penalty
@@ -203,61 +80,92 @@ class MazeUTModelACT(nn.Module):
         self.stopped_at_step = None
         self.weighted_output_history = None
         
-        # Positional Encoding (Learnable)
+        # Positional Encoding (Learnable) 
         self.pos_embed = nn.Parameter(torch.randn(1, height * width, hidden_dim))
+        self.base_h, self.base_w = height, width  # 기준 크기(예: 24, 24) 저장
+
+    def _resize_pos_embed(self, H, W):
+        """
+        (1, HW0, D) 형태의 learnable pos_embed를 (1, H*W, D)로 2D 보간하여 리턴
+        """
+        # (1, HW0, D) -> (1, D, base_h, base_w)
+        pos2d = self.pos_embed.view(1, self.base_h * self.base_w, self.hidden_dim)
+        pos2d = pos2d.view(1, self.base_h, self.base_w, self.hidden_dim).permute(0, 3, 1, 2)
+        # 2D 보간 (bicubic 권장)
+#         pos2d = F.interpolate(pos2d, size=(H, W), mode="bicubic", align_corners=False)
+        pos2d = F.interpolate(pos2d, size=(H, W), mode="nearest")
+        # (1, D, H, W) -> (1, H*W, D)
+        pos_new = pos2d.permute(0, 2, 3, 1).contiguous().view(1, H * W, self.hidden_dim)
+        return pos_new
 
     def forward(self, x):
-        B, _, H, W = x.size()
+        B, _, H_img, W_img = x.size()
         device = x.device
-        
-        # 1) CNN Encoder: (B, hidden_dim, H, W)
+
+        # 1) CNN Encoder: 특징 추출 (출력 크기: B, hidden_dim, H, W)
+        # UnifiedEncoder 통해 convolutional feature map 생성
         x = self.encoder(x)
+        # 업데이트된 feature map의 height, width 가져오기
         H, W = x.shape[2], x.shape[3]
-        
-        # 2) Flatten and Add Positional Encoding: (B, H*W, hidden_dim)
-        x = x.flatten(2).permute(0, 2, 1)  # (B, H*W, C)
-#         pos_embed = torch.randn(1, H * W, self.hidden_dim, device=device)
-        x = x + self.pos_embed[:, :H*W, :]  # pos 추가 (길이 맞춰 슬라이스)
 
-        halting_prob = torch.zeros(B, H * W, device=device)
-        remainders = torch.zeros(B, H * W, device=device)
-        n_updates = torch.zeros(B, H * W, device=device)
-        weighted_output = torch.zeros(B, 2, H, W, device=device)
-        still_running = torch.ones(B, H * W, device=device, dtype=torch.bool)
+        # 2) Flatten + Positional Encoding 추가
+        # (B, hidden_dim, H, W) → (B, H*W, hidden_dim)
+        x = x.flatten(2).permute(0, 2, 1)
+        # 위치 임베딩 pos_embed를 더해 Transformer 입력 준비
+        pos = self._resize_pos_embed(H, W).to(x.dtype).to(x.device)  # 현재 H×W에 맞춘 pos_embed 생성
+        x = x + pos  # pos 추가 (길이 맞춰 슬라이스)
 
-        self.weighted_output_history = []
+        # 3) ACT(Adaptive Computation Time) 초기 변수 설정
+        halting_prob = torch.zeros(B, H * W, device=device)        # 누적 halting 확률
+        remainders   = torch.zeros(B, H * W, device=device)        # 남은 확률(remainder)
+        n_updates    = torch.zeros(B, H * W, device=device)        # 각 위치별 업데이트 횟수
+        weighted_output = torch.zeros(B, 2, H, W, device=device)   # 최종 누적 출력 (decoder 결과 가중합)
+        still_running  = torch.ones(B, H * W, device=device, dtype=torch.bool)  # 아직 멈추지 않은 위치 표시
 
-        for step in range(self.max_iters):
-            
-            x = self.transformer(x)  # (B, H*W, hidden_dim)
-            p = self.sigmoid(self.halt_fc(x)).squeeze(-1)  # (B, H*W)
-            p = torch.where(still_running, p, torch.zeros_like(p))
+        self.weighted_output_history = []  # 각 step별 출력을 저장하는 리스트 (디버깅/분석용)
 
+        # 4) 반복적으로 Transformer + halting mechanism 실행
+        for step in range(self.max_iters):  # 최대 max_iters(예: 10)번 반복
+            x = self.transformer(x)  # Transformer Encoder Block 통과 → (B, H*W, hidden_dim)
+            p = self.sigmoid(self.halt_fc(x)).squeeze(-1)  # 각 위치별 halting 확률 p_t 계산 (B, H*W)
+            p = torch.where(still_running, p, torch.zeros_like(p))  # 이미 멈춘 위치는 확률 0으로 처리
+
+            # 이번 step에서 새로 멈출지 결정 (누적 halting_prob + p > 1 - epsilon 이면 멈춤)
             new_halted = (halting_prob + p * still_running.float() > 1 - self.ponder_epsilon) & still_running
-            still_running = still_running & ~new_halted
+            still_running = still_running & ~new_halted  # 멈춘 위치는 still_running에서 제거
 
+            # 업데이트 가중치 계산
             update_weights = torch.where(
                 new_halted,
-                (1 - halting_prob) / (p + 1e-8),
-                torch.ones_like(p)
+                (1 - halting_prob) / (p + 1e-8),  # 마지막 스텝에서는 남은 확률을 맞춰줌
+                torch.ones_like(p)                 # 그 외에는 그냥 p 그대로 사용
             )
-            update_weights = update_weights * p
+            update_weights = update_weights * p  # 최종 update 가중치 w_t
+
+            # 누적 halting 확률 업데이트
             halting_prob = halting_prob + update_weights
+            # remainder 업데이트 (halted일 경우 남은 확률 저장)
             remainders = torch.where(new_halted, 1 - halting_prob, remainders)
+            # 업데이트 횟수 증가 (아직 running이거나 새로 멈춘 경우)
             n_updates = n_updates + still_running.float() + new_halted.float()
 
-            x_reshaped = x.permute(0, 2, 1).reshape(B, self.hidden_dim, H, W)
-            out = self.decoder_conv(x_reshaped)
-            self.weighted_output_history.append(out)
+            # 5) Decoder CNN을 거쳐 pixel-wise 출력 생성
+            x_reshaped = x.permute(0, 2, 1).reshape(B, self.hidden_dim, H, W)  # (B, hidden_dim, H, W) 복원
+            out = self.decoder_conv(x_reshaped)                                # (B, 2, H, W) → 2-class 예측
+            self.weighted_output_history.append(out)                           # 히스토리에 저장
 
+            # 6) 가중합 업데이트
             weighted_output += out * update_weights.view(B, 1, H, W)
 
+            # 모든 위치가 멈췄으면 조기 종료
             if still_running.sum() == 0:
                 break
 
-        self.last_num_steps = n_updates.mean().item()
-        self.stopped_at_step = n_updates.view(B, H, W).mean(dim=(1, 2))
-        avg_ponder_cost = n_updates.mean()
+        # 7) 로그/모니터링용 변수 저장
+        self.last_num_steps = n_updates.mean().item()                   # 평균 업데이트 횟수
+        self.stopped_at_step = n_updates.view(B, H, W).mean(dim=(1, 2)) # 배치별 평균 스텝
+        ponder_cost = n_updates + remainders
+        avg_ponder_cost = ponder_cost.mean()                            # 전체 평균 ponder cost
 
         return weighted_output, avg_ponder_cost
->>>>>>> c7de1f5f0d9b7f1431c39b15fbff446921ba79ff:code/UT/models/ut_act.py
+

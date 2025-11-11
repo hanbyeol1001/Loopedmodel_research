@@ -205,9 +205,9 @@ def main():
         for i in range(len(optimizer.param_groups)):
             writer.add_scalar(f"Learning_rate/group{i}", optimizer.param_groups[i]["lr"], epoch)
 
-        # 이 부분 잘 이해 못함 : 선택적으로 수행하는거 같아서 일단 skip
+        # validation 수행
         if (epoch + 1) % args.val_period == 0:
-            train_acc = test(net, trainloader, args.test_mode, device)
+            train_acc = -1 if args.quick_test else test(net, trainloader, args.test_mode, device)
             val_acc = test(net, valloader, args.test_mode, device)
 
             print(f"{now()} Training accuracy: {train_acc}")

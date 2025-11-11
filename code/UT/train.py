@@ -6,12 +6,12 @@ from utils import _ensure_logits
 
 
 def train(net, trainloader, mode, optimizer_obj, device):
-    try:
-        train_loss, acc = eval(f"train_{mode}")(net, trainloader, optimizer_obj, device)
-    except NameError:
-        print(f"{ic.format()}: train_{mode}() not implemented. Exiting.")
-        sys.exit()
-    return train_loss, acc
+    fn_name = f"train_{mode}"
+    fn = globals().get(fn_name, None)
+    if fn is None:
+        raise NotImplementedError(f"{fn_name}() is not implemented.")
+    # 실제 에러는 그대로 터져서 traceback을 볼 수 있게 둡니다.
+    return fn(net, trainloader, optimizer_obj, device)
 
 
 def train_default(net, trainloader, optimizer_obj, device):  # without act

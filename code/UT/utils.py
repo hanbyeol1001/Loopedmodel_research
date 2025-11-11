@@ -402,5 +402,3 @@ def test_max_conf(net, testloader, device):
 
     accuracy = 100.0 * correct / total
     return accuracy
-
-

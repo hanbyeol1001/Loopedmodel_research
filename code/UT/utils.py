@@ -22,15 +22,16 @@ from matplotlib.colors import LinearSegmentedColormap
 
 from easy_to_hard_data import MazeDataset
 import torch
-import torch.utils.data as data
+import torch.nn.functional as F
 from torch.optim import SGD, Adam, AdamW
+from torch.utils.data import Dataset, DataLoader, random_split
+
 from tqdm import tqdm
 from icecream import ic
 
 
 from models.maze_ut import MazeUTModel
 from models.ut_act import MazeUTModelACT
-from torch.utils.data import DataLoader, random_split
 
 
 def set_seed(seed=42):
@@ -64,32 +65,37 @@ def set_seed(seed=42):
 #     return trainloader, testloader
 
 
-# def get_dataloaders(train_batch_size,test_batch_size,train_maze_size=9,
-#     test_maze_size=9,shuffle=True,data_root="../data"):
-#     # 학습 데이터셋 경로
-#     train_inputs_path = f"{data_root}/maze_data_train_{train_maze_size}/inputs.npy"
-#     train_solutions_path = f"{data_root}/maze_data_train_{train_maze_size}/solutions.npy"
+def pad_to_center(img, target_size=36):
+    """
+    중앙 정렬 패딩 함수
+    img: Tensor, shape = (C, H, W) or (H, W)
+    target_size: int, 정사각형 목표 크기
+    """
+    if img.ndim == 3:
+        _, H, W = img.shape
+    else:
+        H, W = img.shape
 
-#     # 테스트 데이터셋 경로
-#     test_inputs_path = f"{data_root}/maze_data_test_{test_maze_size}/inputs.npy"
-#     test_solutions_path = f"{data_root}/maze_data_test_{test_maze_size}/solutions.npy"
+    if H == target_size and W == target_size:
+        return img  # 이미 동일하면 그대로 반환
 
-#     # Dataset 객체
-#     train_data = NumpyMazeDataset(train_inputs_path, train_solutions_path)
-#     test_data = NumpyMazeDataset(test_inputs_path, test_solutions_path)
+    pad_h = max(target_size - H, 0)
+    pad_w = max(target_size - W, 0)
+    pad_top = pad_h // 2
+    pad_bottom = pad_h - pad_top
+    pad_left = pad_w // 2
+    pad_right = pad_w - pad_left
 
-#     # DataLoader
-#     trainloader = data.DataLoader(train_data, batch_size=train_batch_size,
-#                                   shuffle=shuffle, drop_last=True, num_workers=0)
-#     testloader = data.DataLoader(test_data, batch_size=test_batch_size,
-#                                  shuffle=False, drop_last=False, num_workers=0)
+    # (left, right, top, bottom)
+    img_padded = F.pad(img, (pad_left, pad_right, pad_top, pad_bottom), mode="constant", value=0)
+    return img_padded
 
-#     return trainloader, testloader
 
-class NumpyMazeDataset(data.Dataset):
-    def __init__(self, inputs_path, solutions_path):
+class NumpyMazeDataset(Dataset):
+    def __init__(self, inputs_path, solutions_path, target_size=36):
         self.inputs = np.load(inputs_path)       # (N, 3, H, W)
         self.solutions = np.load(solutions_path) # (N, H, W)
+        self.target_size = target_size           # <== 추가
 
     def __len__(self):
         return len(self.inputs)
@@ -97,6 +103,11 @@ class NumpyMazeDataset(data.Dataset):
     def __getitem__(self, idx):
         x = torch.tensor(self.inputs[idx], dtype=torch.float32)
         y = torch.tensor(self.solutions[idx], dtype=torch.float32)
+        
+         # --- 중앙 정렬 패딩 ---
+#         x = pad_to_center(x, target_size=self.target_size)
+#         y = pad_to_center(y, target_size=self.target_size)
+        
         return x, y
 
     
@@ -147,6 +158,7 @@ def get_model(model, train_size):
     """Function to load the Universal Transformer model"""
     model = model.lower()
     size = train_size*2 + 6
+#     size = 36 # 36으로 고정.
     print(f'\n height x width: {size} x {size}\n')
     if model== "maze_ut":
         return MazeUTModel(input_channels=3, hidden_dim=128, max_steps=4, nhead=4, height=size, width=size)
@@ -237,12 +249,11 @@ def test(net, testloader, mode, device):
     return accuracy
 
 
-def test_default(net, testloader, device):
-    net.eval()
-    net.to(device)
-    correct = 0
-    total = 0
-
+def test_default(net, testloader, device): 
+    net.eval() 
+    net.to(device) 
+    correct = 0 
+    total = 0 
     with torch.no_grad():
         for inputs, targets in tqdm(testloader, leave=False):
             inputs, targets = inputs.to(device), targets.to(device).unsqueeze(1).long()

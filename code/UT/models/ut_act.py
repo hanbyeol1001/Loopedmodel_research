@@ -113,6 +113,7 @@ class MazeUTModelACT(nn.Module):
         x = x.flatten(2).permute(0, 2, 1)
         # 위치 임베딩 pos_embed를 더해 Transformer 입력 준비
         pos = self._resize_pos_embed(H, W).to(x.dtype).to(x.device)  # 현재 H×W에 맞춘 pos_embed 생성
+#         pos = self.pos_embed[:, :H*W, :].to(x.device)
         x = x + pos  # pos 추가 (길이 맞춰 슬라이스)
 
         # 3) ACT(Adaptive Computation Time) 초기 변수 설정

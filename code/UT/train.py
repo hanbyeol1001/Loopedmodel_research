@@ -22,7 +22,7 @@ def train_default(net, trainloader, optimizer_obj, device):  # without act
     lr_scheduler = optimizer_obj.scheduler
     warmup_scheduler = optimizer_obj.warmup
 
-    criterion = torch.nn.CrossEntropyLoss(reduction="none")
+    criterion = torch.nn.CrossEntropyLoss(reduction="none", ignore_index=-1)
     
     # --- 누적용 카운터 ---
     train_loss_sum = 0.0       # 마스크 적용된 픽셀 손실의 총합

@@ -30,9 +30,9 @@ def main():
     parser.add_argument("--data_path", default="../data", type=str, help="path to data files")
     parser.add_argument("--depth", default=1, type=int, help="depth of the network")
     parser.add_argument("--epochs", default=200, type=int, help="number of epochs for training")
-    parser.add_argument("--lr", default=0.001, type=float, help="learning rate")
+    parser.add_argument("--lr", default=0.1, type=float, help="learning rate")
     parser.add_argument("--lr_factor", default=0.1, type=float, help="learning rate decay factor")  # 학습률 감소 비율
-    parser.add_argument("--lr_schedule", nargs="+", default=[175], type=int,
+    parser.add_argument("--lr_schedule", nargs="+", default=[100, 150], type=int,
                         help="how often to decrease lr")  # 학습률 감소 시점들. nargs="+"는 하나 이상 받겠다는 뜻
     parser.add_argument("--model", default="recur_resnet", type=str, help="model for training")
     parser.add_argument("--model_path", default=None, type=str, help="where is the model saved?")  # 체크포인트 로드 경로
@@ -44,7 +44,7 @@ def main():
     parser.add_argument("--save_json", action="store_true", help="save json")
     parser.add_argument("--save_period", default=None, type=int, help="how often to save")   # 몇 에폭마다 저장할지
     parser.add_argument("--test_batch_size", default=50, type=int, help="batch size for testing")
-    parser.add_argument("--test_iterations", default=8, type=int,
+    parser.add_argument("--test_iterations", default=None, type=int,
                         help="how many, if testing with a different number iterations")
     parser.add_argument("--test_mode", default="max_conf", type=str, help="testing mode")  # 테스트 모드: 왜 있는 지 모르겠음
     parser.add_argument("--train_batch_size", default=50, type=int,
@@ -88,17 +88,22 @@ def main():
         args.test_maze_size, shuffle=args.shuffle
         )
 
+    ## 모델 로드 or 생성
     if args.model_path is not None:
+        net = recur_resnet_act(
+            args.depth, args.width, ponder_epsilon=0.01, time_penalty=0.01, 
+            max_iters=int((args.depth - 4) // 4)
+            )
         print(f"Loading model from checkpoint {args.model_path}...")
-        net, start_epoch, optimizer_state_dict = load_model_from_checkpoint(args.model,
+        net, start_epoch, optimizer_state_dict = load_model_from_checkpoint(net,
                                                                             args.model_path,
                                                                             args.width,
                                                                             args.depth)
         start_epoch += 1
 
-
     else:
-        net = get_model(args.model, args.width, args.depth)
+        net = recur_resnet_act(args.depth, args.width, ponder_epsilon=0.01, time_penalty=0.005, max_iters=int((args.depth - 4) // 4))
+        print(int((args.depth - 4) // 4))
         start_epoch = 0
         optimizer_state_dict = None
 

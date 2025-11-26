@@ -52,15 +52,73 @@ class SharedTransformerBlock(nn.Module):
         return self.block(x)
 
     
+class MHAWithRoPE(nn.Module):
+    def __init__(self, embed_dim: int, num_heads: int, rope_base: float = 10000.0, bias=True):
+        super().__init__()
+        assert embed_dim % num_heads == 0
+        self.embed_dim  = embed_dim
+        self.num_heads  = num_heads
+        self.head_dim   = embed_dim // num_heads
+        assert self.head_dim % 4 == 0, "head_dim must be multiple of 4 for 2D RoPE."
+        self.scale = self.head_dim ** -0.5
+        self.rope_base = rope_base
+
+        self.q_proj = nn.Linear(embed_dim, embed_dim, bias=bias)
+        self.k_proj = nn.Linear(embed_dim, embed_dim, bias=bias)
+        self.v_proj = nn.Linear(embed_dim, embed_dim, bias=bias)
+        self.o_proj = nn.Linear(embed_dim, embed_dim, bias=bias)
+
+    def forward(self, x: torch.Tensor, H: int, W: int):
+        # x: [B, N=H*W, D]
+        B, N, D = x.shape
+        h = self.num_heads
+        d = self.head_dim
+
+        q = self.q_proj(x).view(B, N, h, d).permute(0, 2, 1, 3)  # [B,h,N,d]
+        k = self.k_proj(x).view(B, N, h, d).permute(0, 2, 1, 3)
+        v = self.v_proj(x).view(B, N, h, d).permute(0, 2, 1, 3)
+
+        # ---- RoPE 적용 (여기가 핵심) ----
+        from rope import apply_2d_normalized_rope_to_qk  # or relative path
+        q, k = apply_2d_normalized_rope_to_qk(q, k, H, W, base=self.rope_base)  # still [B,h,N,d]
+
+        attn = (q * self.scale) @ k.transpose(-2, -1)     # [B,h,N,N]
+        attn = attn.softmax(dim=-1)
+        y = attn @ v                                      # [B,h,N,d]
+        y = y.permute(0, 2, 1, 3).contiguous().view(B, N, D)  # [B,N,D]
+        return self.o_proj(y)
+
+
+class SharedTransformerBlockRoPE(nn.Module):
+    def __init__(self, embed_dim: int, nhead: int, mlp_ratio: float = 4.0, rope_base: float = 10000.0, drop: float = 0.0):
+        super().__init__()
+        self.norm1 = nn.LayerNorm(embed_dim)
+        self.attn  = MHAWithRoPE(embed_dim, nhead, rope_base=rope_base)
+        self.norm2 = nn.LayerNorm(embed_dim)
+        self.mlp   = nn.Sequential(
+            nn.Linear(embed_dim, int(embed_dim * mlp_ratio)),
+            nn.GELU(),
+            nn.Dropout(drop),
+            nn.Linear(int(embed_dim * mlp_ratio), embed_dim),
+        )
+
+    def forward(self, x: torch.Tensor, H: int, W: int):
+        # x: [B,N,D]
+        x = x + self.attn(self.norm1(x), H, W)
+        x = x + self.mlp(self.norm2(x))
+        return x
+
+
 class MazeUTModelACT(nn.Module):
     def __init__(
         self, input_channels=3, hidden_dim=128, max_steps=10, 
         nhead=4, height=32, width=32, out_channels=2, ponder_epsilon=0.01, 
-        time_penalty=0.01
+        time_penalty=0.01, rope_base=10000.0
     ):
         super().__init__()
         self.encoder = UnifiedEncoder(input_channels, hidden_dim)
-        self.transformer = SharedTransformerBlock(hidden_dim, nhead)
+#         self.transformer = SharedTransformerBlock(hidden_dim, nhead)
+        self.transformer = SharedTransformerBlockRoPE(hidden_dim, nhead, rope_base=rope_base)
         self.decoder_conv = nn.Sequential(
             nn.Conv2d(hidden_dim, hidden_dim // 2, 3, 1, 1),
             nn.ReLU(),
@@ -82,8 +140,8 @@ class MazeUTModelACT(nn.Module):
         self.weighted_output_history = None
         
         # Positional Encoding (Learnable) 
-        # self.pos_embed = nn.Parameter(torch.randn(1, height * width, hidden_dim))
-        # self.base_h, self.base_w = height, width  # 기준 크기(예: 24, 24) 저장
+#         self.pos_embed = nn.Parameter(torch.randn(1, height * width, hidden_dim))
+#         self.base_h, self.base_w = height, width  # 기준 크기(예: 24, 24) 저장
 
     def _resize_pos_embed(self, H, W):
         """
@@ -122,10 +180,10 @@ class MazeUTModelACT(nn.Module):
         # (B, hidden_dim, H, W) → (B, H*W, hidden_dim)
         x = x.flatten(2).permute(0, 2, 1)
         # 위치 임베딩 pos_embed를 더해 Transformer 입력 준비
-        # pos = self._resize_pos_embed(H, W).to(x.dtype).to(x.device)  # 현재 H×W에 맞춘 pos_embed 생성
+#         pos = self._resize_pos_embed(H, W).to(x.dtype).to(x.device)  # 현재 H×W에 맞춘 pos_embed 생성
 #         pos = self.pos_embed[:, :H*W, :].to(x.device)
-        pos = self._make_pos_embed(H, W, device=x.device, dtype=x.dtype)  # (1, H*W, D)
-        x = x + pos  # pos 추가 (길이 맞춰 슬라이스)
+#         pos = self._make_pos_embed(H, W, device=x.device, dtype=x.dtype)  # (1, H*W, D)
+#         x = x + pos  # pos 추가 (길이 맞춰 슬라이스)
 
         # 3) ACT(Adaptive Computation Time) 초기 변수 설정
         halting_prob = torch.zeros(B, H * W, device=device)        # 누적 halting 확률
@@ -138,7 +196,7 @@ class MazeUTModelACT(nn.Module):
 
         # 4) 반복적으로 Transformer + halting mechanism 실행
         for step in range(self.max_iters):  # 최대 max_iters(예: 10)번 반복
-            x = self.transformer(x)  # Transformer Encoder Block 통과 → (B, H*W, hidden_dim)
+            x = self.transformer(x, H, W)  # Transformer Encoder Block 통과 → (B, H*W, hidden_dim)
             p = self.sigmoid(self.halt_fc(x)).squeeze(-1)  # 각 위치별 halting 확률 p_t 계산 (B, H*W)
             p = torch.where(still_running, p, torch.zeros_like(p))  # 이미 멈춘 위치는 확률 0으로 처리
 

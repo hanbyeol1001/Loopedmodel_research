@@ -12,6 +12,7 @@ from torch.optim.lr_scheduler import MultiStepLR, CosineAnnealingLR
 from torch.utils.tensorboard import SummaryWriter
 
 from models.maze_vitut import MazeViTUTModel
+from models.maze_vitutact import MazeViTUTModelACT
 import warmup
 from utils import train_default, train, test_default, test, OptimizerWithSched, load_model_from_checkpoint, \
     get_dataloaders, to_json, get_optimizer, to_log_file, now, get_model
@@ -37,26 +38,26 @@ def main():
     parser.add_argument("--checkpoint", default="check_default", type=str,
                         help="where to save the network")
     parser.add_argument("--data_path", default="../data", type=str, help="path to data files")
-    parser.add_argument("--depth", default=1, type=int, help="depth of the network")
+    parser.add_argument("--depth", default=50, type=int, help="depth of the network")
     parser.add_argument("--epochs", default=200, type=int, help="number of epochs for training")
     parser.add_argument("--lr", default=0.001, type=float, help="learning rate")
     parser.add_argument("--lr_factor", default=0.1, type=float, help="learning rate decay factor")
-    parser.add_argument("--lr_schedule", nargs="+", default=[100, 150], type=int,
+    parser.add_argument("--lr_schedule", nargs="+", default=[175], type=int,
                         help="how often to decrease lr")
-    parser.add_argument("--model", default="recur_resnet", type=str, help="model for training")
+    parser.add_argument("--model", default="maze_vitut", type=str, help="model for training")
     parser.add_argument("--model_path", default=None, type=str, help="where is the model saved?")
     parser.add_argument("--no_shuffle", action="store_false", dest="shuffle",
                         help="shuffle training data?")
-    parser.add_argument("--optimizer", default="adam", type=str, help="optimizer")
+    parser.add_argument("--optimizer", default="sgd", type=str, help="optimizer")
     parser.add_argument("--output", default="output_default", type=str, help="output subdirectory")
     parser.add_argument("--quick_test", action="store_true", help="only test on eval data")
     parser.add_argument("--save_json", action="store_true", help="save json")
-    parser.add_argument("--save_period", default=None, type=int, help="how often to save")
-    parser.add_argument("--test_batch_size", default=500, type=int, help="batch size for testing")
+    parser.add_argument("--save_period", default=50, type=int, help="how often to save")
+    parser.add_argument("--test_batch_size", default=64, type=int, help="batch size for testing")
     parser.add_argument("--test_iterations", default=None, type=int,
                         help="how many, if testing with a different number iterations")
     parser.add_argument("--test_mode", default="default", type=str, help="testing mode")
-    parser.add_argument("--train_batch_size", default=128, type=int,
+    parser.add_argument("--train_batch_size", default=64, type=int,
                         help="batch size for training")
     parser.add_argument("--train_log", default="train_log.txt", type=str,
                         help="name of the log file")
@@ -64,7 +65,7 @@ def main():
     parser.add_argument("--val_period", default=20, type=int, help="how often to validate")
     parser.add_argument("--warmup_period", default=5, type=int, help="warmup period")
     parser.add_argument("--width", default=2, type=int, help="width of the network")
-    parser.add_argument("--test_maze_size", default=9, type=int, help="test_maze_size")
+    parser.add_argument("--test_maze_size", default=13, type=int, help="test_maze_size")
     parser.add_argument("--train_maze_size", default=9, type=int, help="train_maze_size")
 
     args = parser.parse_args()
@@ -187,12 +188,12 @@ def main():
             best_acc = acc
             best_model_state = copy.deepcopy(net.state_dict())
             best_epoch = epoch
-            check = 0
-        else:
-            if check == 30:
-                break
-            else:
-                check += 1
+#             check = 0
+#         else:
+#             if check == 30:
+#                 break
+#             else:
+#                 check += 1
         
         print(f"{now()} Training loss at epoch {epoch}: {loss}")
         print(f"{now()} Training accuracy at epoch {epoch}: {acc}")
@@ -216,7 +217,7 @@ def main():
             test_acc = test(net, testloader, args.test_mode, device)
 
             print(f"{now()} Training accuracy: {train_acc}")
-            print(f"{now()} Testing accuracy: {test_acc}")
+            print(f"{now()} Validation accuracy: {test_acc}")
 
             stats = [train_acc, test_acc]
             stat_names = ["train_acc", "test_acc"]

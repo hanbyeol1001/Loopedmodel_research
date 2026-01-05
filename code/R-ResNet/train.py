@@ -42,21 +42,22 @@ def main():
     parser.add_argument("--output", default="output_default", type=str, help="output subdirectory")
     parser.add_argument("--quick_test", action="store_true", help="only test on eval data")  # --quick_test를 넣으면 true
     parser.add_argument("--save_json", action="store_true", help="save json")
-    parser.add_argument("--save_period", default=None, type=int, help="how often to save")   # 몇 에폭마다 저장할지
+    parser.add_argument("--save_period", default=50, type=int, help="how often to save")   # 몇 에폭마다 저장할지
     parser.add_argument("--test_batch_size", default=50, type=int, help="batch size for testing")
     parser.add_argument("--test_iterations", default=8, type=int,
                         help="how many, if testing with a different number iterations")
-    parser.add_argument("--test_mode", default="max_conf", type=str, help="testing mode")  # 테스트 모드: 왜 있는 지 모르겠음
+    parser.add_argument("--test_mode", default="default", type=str, help="testing mode")  # 테스트 모드
     parser.add_argument("--train_batch_size", default=50, type=int,
                         help="batch size for training")
     parser.add_argument("--train_log", default="train_log.txt", type=str,
                         help="name of the log file")
-    parser.add_argument("--train_mode", default="default", type=str, help="training mode")  # 훈련 모드: 왜 있는 지 모르겠음
+    parser.add_argument("--train_mode", default="default", type=str, help="training mode")  # 훈련 모드
     parser.add_argument("--val_period", default=20, type=int, help="how often to validate")  # 검증 주기 (에폭 단위)
-    parser.add_argument("--warmup_period", default=5, type=int, help="warmup period")  # warmup 적용 에폭 수: 뭔지 잘 모르겠음
+    parser.add_argument("--warmup_period", default=5, type=int, help="warmup period")  # warmup 적용 에폭 수
     parser.add_argument("--width", default=4, type=int, help="width of the network")  # 모델 너비
     parser.add_argument("--test_maze_size", default=13, type=int, help="test_maze_size")  # 13x13 사이즈 미로
     parser.add_argument("--train_maze_size", default=9, type=int, help="train_maze_size")  # 9x9 사이즈 미로
+    parser.add_argument("--dilation", default=1, type=int, help="dilation factor")
 
 
     args = parser.parse_args()  # CLI 인자 파싱
@@ -93,12 +94,12 @@ def main():
         net, start_epoch, optimizer_state_dict = load_model_from_checkpoint(args.model,
                                                                             args.model_path,
                                                                             args.width,
-                                                                            args.depth)
+                                                                            args.depth, args.dilation)
         start_epoch += 1
 
 
     else:
-        net = get_model(args.model, args.width, args.depth)
+        net = get_model(args.model, args.width, args.depth, args.dilation)
         start_epoch = 0
         optimizer_state_dict = None
 
@@ -187,7 +188,7 @@ def main():
             }
             
             out_str = os.path.join(args.checkpoint,
-                                   f"recur_resnet_act_{args.optimizer}"
+                                   f"{args.model}_{args.optimizer}"
                                    f"_depth={args.depth}"
                                    f"_width={args.width}"
                                    f"_lr={args.lr}"

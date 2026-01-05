@@ -7,10 +7,20 @@ import torch.nn.functional as F
 class BasicBlock(nn.Module):
     expansion = 1
 
-    def __init__(self, in_planes, planes, stride=1):
+    def __init__(self, in_planes, planes, stride=1, dilation=1):
         super().__init__()
-        self.conv1 = nn.Conv2d(in_planes, planes, 3, stride, 1, bias=False)
-        self.conv2 = nn.Conv2d(planes, planes, 3, 1, 1, bias=False)
+        
+        padding = dilation  # 3x3 + stride=1일 때 output size 유지용
+        
+        self.conv1 = nn.Conv2d(
+            in_planes, planes, 3, stride, 
+            padding=padding, dilation=dilation, bias=False
+        )
+        self.conv2 = nn.Conv2d(
+            planes, planes, 3, 1, 
+            padding=padding, dilation=dilation, bias=False
+        )
+        
         self.dropout = nn.Dropout2d(p=0.1)
         
         self.shortcut = nn.Sequential()
@@ -26,13 +36,16 @@ class BasicBlock(nn.Module):
 
     
 class UnifiedEncoder(nn.Module):
-    def __init__(self, input_channels=3, hidden_dim=128):
+    def __init__(self, input_channels=3, hidden_dim=128, dilation=1):
         super().__init__()
+        
+        padding = dilation
+        
         width = hidden_dim // 64
-        self.conv1 = nn.Conv2d(input_channels, 64 * width, kernel_size=3, stride=1, padding=1, bias=False)
+        self.conv1 = nn.Conv2d(input_channels, 64 * width, kernel_size=3, stride=1, padding=padding, dilation=dilation, bias=False)
         self.dropout1 = nn.Dropout2d(p=0.1)
-        self.block1 = BasicBlock(64 * width, 64 * width)
-        self.block2 = BasicBlock(64 * width, 64 * width)
+        self.block1 = BasicBlock(64 * width, 64 * width, dilation)
+        self.block2 = BasicBlock(64 * width, 64 * width, dilation)
 
     def forward(self, x):
         x = F.relu(self.conv1(x))  # not inplace
@@ -113,16 +126,19 @@ class MazeUTModelACT(nn.Module):
     def __init__(
         self, input_channels=3, hidden_dim=128, max_steps=10, 
         nhead=4, height=32, width=32, out_channels=2, ponder_epsilon=0.01, 
-        time_penalty=0.01, rope_base=10000.0
+        time_penalty=0.01, rope_base=10000.0, dilation=1
     ):
         super().__init__()
-        self.encoder = UnifiedEncoder(input_channels, hidden_dim)
+        
+        padding = dilation
+        
+        self.encoder = UnifiedEncoder(input_channels, hidden_dim, dilation)
 #         self.transformer = SharedTransformerBlock(hidden_dim, nhead)
         self.transformer = SharedTransformerBlockRoPE(hidden_dim, nhead, rope_base=rope_base)
         self.decoder_conv = nn.Sequential(
-            nn.Conv2d(hidden_dim, hidden_dim // 2, 3, 1, 1),
+            nn.Conv2d(hidden_dim, hidden_dim // 2, kernel_size=3, stride=1, padding=padding, dilation=dilation),
             nn.ReLU(),
-            nn.Conv2d(hidden_dim // 2, hidden_dim // 4, 3, 1, 1),
+            nn.Conv2d(hidden_dim // 2, hidden_dim // 4, kernel_size=3, stride=1, padding=padding, dilation=dilation),
             nn.ReLU(),
             nn.Conv2d(hidden_dim // 4, 2, 1)
         )

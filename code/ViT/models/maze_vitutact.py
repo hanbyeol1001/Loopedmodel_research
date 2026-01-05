@@ -24,7 +24,7 @@ class ViTBlock(nn.Module):
         return x
 
 class MazeViTUTModelACT(nn.Module):
-    def __init__(self, img_size=64, patch_size=8, in_channels=3, hidden_dim=128, max_steps=100,
+    def __init__(self, img_size=64, patch_size=8, in_channels=3, hidden_dim=128, max_steps=50,
                  nhead=4, mlp_dim=512, ponder_epsilon=0.01, out_channels=2):
         super().__init__()
 

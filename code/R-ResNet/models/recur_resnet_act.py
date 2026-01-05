@@ -17,13 +17,22 @@ class BasicBlock(nn.Module):
     """Basic residual block class"""
     expansion = 1
 
-    def __init__(self, in_planes, planes, stride=1):
+    def __init__(self, in_planes, planes, stride=1, dilation=1):
         super(BasicBlock, self).__init__()
+        
+        padding = dilation
+        
         self.conv1 = nn.Conv2d(
-            in_planes, planes, kernel_size=3, stride=stride, padding=1, bias=False)
+            in_planes, planes, kernel_size=3, 
+            stride=stride, padding=padding, 
+            dilation = dilation, bias=False
+        )
 
-        self.conv2 = nn.Conv2d(planes, planes, kernel_size=3,
-                               stride=1, padding=1, bias=False)
+        self.conv2 = nn.Conv2d(
+            planes, planes, kernel_size=3,
+            stride=1, padding=padding,
+            dilation = dilation, bias=False
+        )
 
         self.shortcut = nn.Sequential()
         if stride != 1 or in_planes != self.expansion*planes:
@@ -31,68 +40,94 @@ class BasicBlock(nn.Module):
                 nn.Conv2d(in_planes, self.expansion*planes,
                           kernel_size=1, stride=stride, bias=False)
             )
-        self.dropout = nn.Dropout2d(p=0.1)
+#         self.dropout = nn.Dropout2d(p=0.1)
 
     def forward(self, x):
         out = F.relu(self.conv1(x))
         out = self.conv2(out)
         out += self.shortcut(x)
         out = F.relu(out)
-        return self.dropout(out)
+#         return self.dropout(out)
+        return out
 
 
 class RecurResNetACT(nn.Module):
     """ACT가 적용된 수정된 ResNet 모델 클래스"""
 
-    def __init__(self, block=BasicBlock, num_blocks=[2], depth=44, width=2, ponder_epsilon=0.01, time_penalty=0.01, max_iters=50):
+    def __init__(self, block=BasicBlock, num_blocks=[2], depth=28, width=2, ponder_epsilon=0.01, time_penalty=0.01, max_iters=50, dilation=1):
         super(RecurResNetACT, self).__init__()
+        
+        padding = dilation
+        
+        self.iters = int((depth - 4) // 4)
         self.max_iters = max_iters
         self.ponder_epsilon = ponder_epsilon
         self.time_penalty = time_penalty
 
         self.in_planes = int(width*64)
-        self.conv1 = nn.Conv2d(3, int(width * 64), kernel_size=3,
-                               stride=1, padding=1, bias=False)
+        self.conv1 = nn.Conv2d(
+            3, int(width * 64), 
+            kernel_size=3, stride=1,
+            padding=padding, dilation = dilation, 
+            bias=False
+        )
 
         # 순환 블록 생성
         layers = []
         for i in range(len(num_blocks)):
-            layers.append(self._make_layer(block, int(width*64), num_blocks[i], stride=1))
+            layers.append(
+                self._make_layer(
+                    block, int(width*64), num_blocks[i], 
+                    stride=1, dilation = dilation
+                )
+            )
         self.recur_block = nn.Sequential(*layers)
 
         # 출력 레이어들
-        self.conv2 = nn.Conv2d(int(width*64), 32, kernel_size=3,
-                               stride=1, padding=1, bias=False)
-        self.conv3 = nn.Conv2d(32, 8, kernel_size=3,
-                               stride=1, padding=1, bias=False)
-        self.conv4 = nn.Conv2d(8, 2, kernel_size=3,
-                               stride=1, padding=1, bias=False)
+        self.conv2 = nn.Conv2d(
+            int(width*64), 32, 
+            kernel_size=3,stride=1, 
+            padding=padding, dilation = dilation,
+            bias=False
+        )
+        self.conv3 = nn.Conv2d(
+            32, 8, 
+            kernel_size=3, stride=1, 
+            padding=padding, dilation = dilation, 
+            bias=False
+        )
+        self.conv4 = nn.Conv2d(
+            8, 2, 
+            kernel_size=3, stride=1,
+            padding=padding, dilation = dilation, 
+            bias=False
+        )
 
-        # # halting unit 기존
-        # self.halting_unit = nn.Sequential(
-        #     nn.AdaptiveAvgPool2d(1),  # Global average pooling
-        #     nn.Flatten(),
-        #     nn.Linear(int(width*64), 1),
-        #     nn.Sigmoid()
-        # )
-        # 더 복잡하게 수정
+        # halting unit 기존
         self.halting_unit = nn.Sequential(
-            nn.AdaptiveAvgPool2d(1),
+            nn.AdaptiveAvgPool2d(1),  # Global average pooling
             nn.Flatten(),
-            nn.LayerNorm(self.in_planes),
-            nn.Linear(self.in_planes, 64),
-            nn.ReLU(),
-            nn.Linear(64, 1),
+            nn.Linear(int(width*64), 1),
             nn.Sigmoid()
         )
+#         # 더 복잡하게 수정
+#         self.halting_unit = nn.Sequential(
+#             nn.AdaptiveAvgPool2d(1),
+#             nn.Flatten(),
+#             nn.LayerNorm(self.in_planes),
+#             nn.Linear(self.in_planes, 64),
+#             nn.ReLU(),
+#             nn.Linear(64, 1),
+#             nn.Sigmoid()
+#         )
 
         self.weighted_output_history = [] 
 
-    def _make_layer(self, block, planes, num_blocks, stride):
+    def _make_layer(self, block, planes, num_blocks, stride, dilation):
         strides = [stride] + [1]*(num_blocks-1)
         layers = []
         for strd in strides:
-            layers.append(block(self.in_planes, planes, strd))
+            layers.append(block(self.in_planes, planes, strd, dilation=dilation))
             self.in_planes = planes * block.expansion
         return nn.Sequential(*layers)
 
@@ -185,10 +220,11 @@ class RecurResNetACT(nn.Module):
         self.last_num_steps = len(halting_probs) # 실제로 진행된 iteration 횟수
         self.stopped_at_step = stopped_at_step # <<<<<<< 추가된 부분
 
-        return weighted_output, avg_ponder_cost
+#         return weighted_output, avg_ponder_cost
+        return weighted_output
 
-def recur_resnet_act(depth, width, ponder_epsilon=0.01, time_penalty=0.005, max_iters=50):
+def recur_resnet_act(depth, width, ponder_epsilon=0.01, time_penalty=0.005, max_iters=50, dilation=1):
     """ACT가 적용된 순환 ResNet 생성 함수"""
     return RecurResNetACT(BasicBlock, [2], depth=depth, width=width,
                           ponder_epsilon=ponder_epsilon, time_penalty=time_penalty,
-                          max_iters=max_iters)
+                          max_iters=max_iters, dilation=dilation)

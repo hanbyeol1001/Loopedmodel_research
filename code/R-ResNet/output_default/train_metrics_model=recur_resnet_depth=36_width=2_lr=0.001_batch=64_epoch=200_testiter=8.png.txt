@@ -1,0 +1,3 @@
+==> Starting testing...
+20251127 05:47:24 Training accuracy: -1
+20251127 05:47:24 Testing accuracy: 28.24

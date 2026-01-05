@@ -7,10 +7,18 @@ import torch.nn.functional as F
 class BasicBlock(nn.Module):
     expansion = 1
 
-    def __init__(self, in_planes, planes, stride=1):
+    def __init__(self, in_planes, planes, stride=1, dilation=1):
         super().__init__()
-        self.conv1 = nn.Conv2d(in_planes, planes, kernel_size=3, stride=stride, padding=1, bias=False)
-        self.conv2 = nn.Conv2d(planes, planes, kernel_size=3, stride=1, padding=1, bias=False)
+        padding = dilation  # 3x3 + stride=1일 때 output size 유지용
+        
+        self.conv1 = nn.Conv2d(
+            in_planes, planes, kernel_size=3, stride=stride, 
+            padding=padding, dilation=dilation, bias=False
+        )
+        self.conv2 = nn.Conv2d(
+            planes, planes, kernel_size=3, stride=1, 
+            padding=padding, dilation=dilation, bias=False)
+        
         self.dropout = nn.Dropout2d(p=0.1)
 
         self.shortcut = nn.Sequential()
@@ -28,13 +36,17 @@ class BasicBlock(nn.Module):
 
 # ====== Unified CNN Encoder with Dropout ======
 class UnifiedEncoder(nn.Module):
-    def __init__(self, input_channels=3, hidden_dim=128):
+    def __init__(self, input_channels=3, hidden_dim=128, dilation=1):
         super().__init__()
+        padding = dilation 
         width = hidden_dim // 64
-        self.conv1 = nn.Conv2d(input_channels, 64 * width, kernel_size=3, stride=1, padding=1, bias=False)
+        self.conv1 = nn.Conv2d(
+            input_channels, 64 * width, kernel_size=3, 
+            stride=1, padding=padding, dilation=dilation, bias=False
+        )
         self.dropout1 = nn.Dropout2d(p=0.1)
-        self.block1 = BasicBlock(64 * width, 64 * width)
-        self.block2 = BasicBlock(64 * width, 64 * width)
+        self.block1 = BasicBlock(64 * width, 64 * width, dilation)
+        self.block2 = BasicBlock(64 * width, 64 * width, dilation)
 
     def forward(self, x):
         x = F.relu(self.conv1(x))
@@ -55,14 +67,16 @@ class SharedTransformerBlock(nn.Module):
 
 # ====== MazeUTModel: CNN Encoder + Transformer + Linear Decoder ======
 class MazeUTModel(nn.Module):
-    def __init__(self, input_channels=3, hidden_dim=128, max_steps=4, nhead=4, height=24, width=24):
+    def __init__(self, input_channels=3, hidden_dim=128, max_steps=4, nhead=4, height=24, width=24, dilation=1):
         super().__init__()
-        self.encoder = UnifiedEncoder(input_channels, hidden_dim)
+        padding = dilation
+        
+        self.encoder = UnifiedEncoder(input_channels, hidden_dim, dilation)
         self.transformer = SharedTransformerBlock(hidden_dim, nhead)  # Transformer Block (shared)
         self.decoder = nn.Sequential(
-            nn.Conv2d(hidden_dim, hidden_dim // 2, kernel_size=3, stride=1, padding=1),
+            nn.Conv2d(hidden_dim, hidden_dim // 2, kernel_size=3, stride=1, padding=padding, dilation=dilation),
             nn.ReLU(),
-            nn.Conv2d(hidden_dim // 2, hidden_dim // 4, kernel_size=3, stride=1, padding=1),
+            nn.Conv2d(hidden_dim // 2, hidden_dim // 4, kernel_size=3, stride=1, padding=padding, dilation=dilation),
             nn.ReLU(),
             nn.Conv2d(hidden_dim // 4, 2, kernel_size=1)
         )

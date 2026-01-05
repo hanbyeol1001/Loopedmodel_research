@@ -45,19 +45,19 @@ def main():
     parser.add_argument("--epochs", default=200, type=int, help="number of epochs for training")
     parser.add_argument("--lr", default=0.001, type=float, help="learning rate")
     parser.add_argument("--lr_factor", default=0.1, type=float, help="learning rate decay factor")
-    parser.add_argument("--lr_schedule", nargs="+", default=[100, 150], type=int,
+    parser.add_argument("--lr_schedule", nargs="+", default=[175], type=int,
                         help="how often to decrease lr")
     parser.add_argument("--model", default="recur_resnet", type=str, help="model for training")
     parser.add_argument("--model_path", default=None, type=str, help="where is the model saved?")
     parser.add_argument("--no_shuffle", action="store_false", dest="shuffle",
                         help="shuffle training data?")
-    parser.add_argument("--optimizer", default="adam", type=str, help="optimizer")
+    parser.add_argument("--optimizer", default="sgd", type=str, help="optimizer")
     parser.add_argument("--output", default="output_default", type=str, help="output subdirectory")
     parser.add_argument("--quick_test", action="store_true", help="only test on eval data")
     parser.add_argument("--save_json", action="store_true", help="save json")
-    parser.add_argument("--save_period", default=None, type=int, help="how often to save")
+    parser.add_argument("--save_period", default=50, type=int, help="how often to save")
     parser.add_argument("--test_batch_size", default=500, type=int, help="batch size for testing")
-    parser.add_argument("--test_iterations", default=None, type=int,
+    parser.add_argument("--test_iterations", default=8, type=int,
                         help="how many, if testing with a different number iterations")
     parser.add_argument("--test_mode", default="default", type=str, help="testing mode")
     parser.add_argument("--train_batch_size", default=64, type=int,
@@ -69,10 +69,11 @@ def main():
     parser.add_argument("--warmup_period", default=5, type=int, help="warmup period")
     # parser.add_argument("--width", default=2, type=int, help="width of the network")
     parser.add_argument("--test_maze_size", default=13, type=int, help="test_maze_size") 
-    parser.add_argument("--train_maze_size", default=13, type=int, help="train_maze_size")
+    parser.add_argument("--train_maze_size", default=9, type=int, help="train_maze_size")
     parser.add_argument("--val_ratio", default=0.2, type=float,
                     help="ratio of training data used for validation (0~1)")
     parser.add_argument("--seed", default=42, type=int, help="random seed")
+    parser.add_argument("--dilation", default=1, type=int, help="dilation factor")
 
 
     args = parser.parse_args()
@@ -117,13 +118,13 @@ def main():
     if args.model_path is not None:
         print(f"Loading model from checkpoint {args.model_path}...")
         net, start_epoch, optimizer_state_dict = load_model_from_checkpoint(
-            args.model,args.model_path, args.train_maze_size)
+            args.model,args.model_path, args.train_maze_size, args.dilation)
         start_epoch += 1
         best_model_state = copy.deepcopy(net.state_dict())
 
     else:
         print("Warning: best_model_state와 model_path 모두 없습니다. 랜덤 파라미터로 테스트합니다.")
-        net = get_model(args.model, args.train_maze_size)
+        net = get_model(args.model, args.train_maze_size, args.dilation)
         start_epoch = 0
         optimizer_state_dict = None
         best_model_state = copy.deepcopy(net.state_dict())

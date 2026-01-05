@@ -6,18 +6,27 @@ class BasicBlock(nn.Module):
     """Basic residual block class"""
     expansion = 1
 
-    def __init__(self, in_planes, planes, stride=1):
+    def __init__(self, in_planes, planes, stride=1, dilation=1):
         '''
         conv1: 3x3, stride=stride, padding=1
         conv2: 3x3, stride=1, padding=1
         shortcut: (stride!=1 or 채널 다르면) 1x1 conv, 아니면 id
         '''
         super(BasicBlock, self).__init__()
+        
+        padding = dilation  # 3x3 + stride=1일 때 output size 유지용
+        
         self.conv1 = nn.Conv2d(
-            in_planes, planes, kernel_size=3, stride=stride, padding=1, bias=False)
+            in_planes, planes, kernel_size=3,
+            stride=stride, padding=padding,
+            dilation=dilation, bias=False
+        )
 
-        self.conv2 = nn.Conv2d(planes, planes, kernel_size=3,
-                               stride=1, padding=1, bias=False)
+        self.conv2 = nn.Conv2d(
+            planes, planes, kernel_size=3,
+            stride=1, padding=padding,
+            dilation=dilation, bias=False
+        )
 
         self.shortcut = nn.Sequential()
         if stride != 1 or in_planes != self.expansion*planes:
@@ -37,29 +46,56 @@ class BasicBlock(nn.Module):
 class RecurResNet(nn.Module):
     """Modified ResNet model class"""
 
-    def __init__(self, block, num_blocks, depth, width=1):
+    def __init__(self, block, num_blocks=[2], depth=28, width=2, dilation=1):
         super(RecurResNet, self).__init__()
         self.iters = int((depth - 4) // 4)
         self.in_planes = int(width*64)
-        self.conv1 = nn.Conv2d(3, int(width * 64), kernel_size=3,
-                               stride=1, padding=1, bias=False)
+        self.dilation = dilation
+        
+        # conv1: 3x3 → dilation & padding 적용
+        self.conv1 = nn.Conv2d(
+            3, int(width * 64),
+            kernel_size=3, stride=1,
+            padding=dilation, dilation=dilation,
+            bias=False
+        )
+        
         layers = []
         for i in range(len(num_blocks)):
-            layers.append(self._make_layer(block, int(width*64), num_blocks[i], stride=1))
+            layers.append(
+                self._make_layer(
+                    block, int(width*64), num_blocks[i], 
+                    stride=1, dilation=dilation
+                )
+            )
 
         self.recur_block = nn.Sequential(*layers)
-        self.conv2 = nn.Conv2d(int(width*64), 32, kernel_size=3,
-                               stride=1, padding=1, bias=False)
-        self.conv3 = nn.Conv2d(32, 8, kernel_size=3,
-                               stride=1, padding=1, bias=False)
-        self.conv4 = nn.Conv2d(8, 2, kernel_size=3,
-                               stride=1, padding=1, bias=False)
+        
+        # 마지막 3개의 conv도 3x3이니까 똑같이 dilation 적용
+        self.conv2 = nn.Conv2d(
+            int(width * 64), 32,
+            kernel_size=3, stride=1,
+            padding=dilation, dilation=dilation,
+            bias=False
+        )
+        self.conv3 = nn.Conv2d(
+            32, 8,
+            kernel_size=3, stride=1,
+            padding=dilation, dilation=dilation,
+            bias=False
+        )
+        self.conv4 = nn.Conv2d(
+            8, 2,
+            kernel_size=3, stride=1,
+            padding=dilation, dilation=dilation,
+            bias=False
+        )
 
-    def _make_layer(self, block, planes, num_blocks, stride):
+    def _make_layer(self, block, planes, num_blocks, stride, dilation):
         strides = [stride] + [1]*(num_blocks-1)
         layers = []
         for strd in strides:
-            layers.append(block(self.in_planes, planes, strd))
+            layers.append(block(self.in_planes, planes, strd, dilation=dilation))
             self.in_planes = planes * block.expansion
         return nn.Sequential(*layers)
 
@@ -74,5 +110,5 @@ class RecurResNet(nn.Module):
         return self.thoughts[-1]  # 최종적으로는 마지막 step만 반환
 
 
-def recur_resnet(depth, width):
-    return RecurResNet(BasicBlock, [2], depth=depth, width=width)
+def recur_resnet(depth, width, dilation=1):
+    return RecurResNet(BasicBlock, [2], depth=depth, width=width, dilation=dilation)

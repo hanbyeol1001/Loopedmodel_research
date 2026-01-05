@@ -24,7 +24,7 @@ class ViTBlock(nn.Module):
         return x
 
 class MazeViTUTModel(nn.Module):
-    def __init__(self, img_size=64, patch_size=8, in_channels=3, hidden_dim=128, max_steps=4, nhead=4, mlp_dim=512, act=False, out_channels=2):
+    def __init__(self, img_size=64, patch_size=8, in_channels=3, hidden_dim=128, max_steps=50, nhead=4, mlp_dim=512, act=False, out_channels=2):
         super().__init__()
         self.patch_embed = nn.Conv2d(in_channels, hidden_dim, kernel_size=patch_size, stride=patch_size)
         

@@ -98,19 +98,60 @@ class OptimizerWithSched:
     scheduler: object
     warmup: object
 
-def train_baseline(net, trainloader, optimizer_obj, device): # only ViT
+# def train_baseline(net, trainloader, optimizer_obj, device): # only ViT
+#     net.train()
+#     optimizer = optimizer_obj.optimizer
+#     lr_scheduler = optimizer_obj.scheduler
+#     warmup_scheduler = optimizer_obj.warmup
+#     criterion = torch.nn.CrossEntropyLoss(reduction="mean")
+#     train_loss, correct, total = 0, 0, 0
+    
+#     for inputs, targets in tqdm(trainloader, leave=False):
+#         inputs, targets = inputs.to(device), targets.to(device).unsqueeze(1).long()
+
+#         optimizer.zero_grad()
+        
+#         outputs = net(inputs)
+
+#         # ViT or UT structure: use last step's output
+#         if isinstance(net, (MazeViTUTModel)) and outputs.dim() == 5:
+#             outputs = outputs[-1]
+
+#         B_out, C_out, H_out, W_out = outputs.size()
+#         targets_resized = F.interpolate(targets.float(), size=(H_out, W_out), mode='nearest').long().squeeze(1)
+#         reshaped_outputs = outputs.permute(0, 2, 3, 1).contiguous().view(-1, C_out)
+#         reshaped_targets = targets_resized.view(-1)
+        
+#         loss = criterion(reshaped_outputs, reshaped_targets)
+#         loss.backward()
+#         optimizer.step()
+        
+#         train_loss += loss.item() * reshaped_targets.size(0)
+#         total += reshaped_targets.size(0)
+#         predicted = outputs.argmax(1)
+#         correct += (predicted == targets_resized).sum().item()
+    
+#     train_loss /= total
+#     acc = 100.0 * correct / total
+#     lr_scheduler.step()
+#     warmup_scheduler.dampen()
+
+#     return train_loss, acc
+
+def train_baseline(net, trainloader, optimizer_obj, device):
     net.train()
     optimizer = optimizer_obj.optimizer
     lr_scheduler = optimizer_obj.scheduler
     warmup_scheduler = optimizer_obj.warmup
     criterion = torch.nn.CrossEntropyLoss(reduction="mean")
+    
     train_loss, correct, total = 0, 0, 0
     
     for inputs, targets in tqdm(trainloader, leave=False):
+        # targets shape: [B, 1, H, W]
         inputs, targets = inputs.to(device), targets.to(device).unsqueeze(1).long()
 
         optimizer.zero_grad()
-        
         outputs = net(inputs)
 
         # ViT or UT structure: use last step's output
@@ -118,7 +159,11 @@ def train_baseline(net, trainloader, optimizer_obj, device): # only ViT
             outputs = outputs[-1]
 
         B_out, C_out, H_out, W_out = outputs.size()
+        
+        # 1. 타겟 리사이즈 및 준비
         targets_resized = F.interpolate(targets.float(), size=(H_out, W_out), mode='nearest').long().squeeze(1)
+        
+        # 2. Loss 계산용 (픽셀 단위)
         reshaped_outputs = outputs.permute(0, 2, 3, 1).contiguous().view(-1, C_out)
         reshaped_targets = targets_resized.view(-1)
         
@@ -126,17 +171,88 @@ def train_baseline(net, trainloader, optimizer_obj, device): # only ViT
         loss.backward()
         optimizer.step()
         
+        # 3. 통계 누적
+        # Loss는 기존처럼 전체 픽셀 평균을 위해 픽셀 수만큼 가중치를 주어 누적
         train_loss += loss.item() * reshaped_targets.size(0)
-        total += reshaped_targets.size(0)
-        predicted = outputs.argmax(1)
-        correct += (predicted == targets_resized).sum().item()
+        
+        # ======= 정확도 계산 (Sample-wise Exact Match) =======
+        predicted = outputs.argmax(1) # [B, H_out, W_out]
+        
+        # 각 샘플별로 모든 픽셀이 일치하는지 확인 (결과: [B] 크기의 True/False 벡터)
+        # .view(B_out, -1)로 픽셀을 펼친 후 모든(all) 픽셀이 같은지 체크합니다.
+        sample_match = (predicted == targets_resized).view(B_out, -1).all(dim=1)
+        
+        correct += sample_match.sum().item() # 완전히 맞춘 이미지 개수 누적
+        total += B_out                       # 이미지 장수(Batch Size) 누적
     
-    train_loss /= total
+    # 4. 최종 결과 산출
+    # train_loss는 픽셀 단위 총합을 전체 픽셀 수로 나눕니다.
+    # (원래 코드의 total이 픽셀 수였으므로 그 논리를 유지하기 위해 별도 변수 관리도 가능하지만, 
+    # 가독성을 위해 직관적으로 계산합니다.)
+    
+    pixel_total = total * H_out * W_out
+    train_loss /= pixel_total
+    
+    # acc는 (맞춘 이미지 수 / 전체 이미지 수) * 100
     acc = 100.0 * correct / total
+    
     lr_scheduler.step()
     warmup_scheduler.dampen()
 
     return train_loss, acc
+
+
+# def train_default(net, trainloader, optimizer_obj, device):
+#     net.train()
+#     optimizer = optimizer_obj.optimizer
+#     lr_scheduler = optimizer_obj.scheduler
+#     warmup_scheduler = optimizer_obj.warmup
+#     criterion = torch.nn.CrossEntropyLoss(reduction="mean")
+#     train_loss, correct, total = 0, 0, 0
+    
+#     for inputs, targets in tqdm(trainloader, leave=False):
+#         inputs, targets = inputs.to(device), targets.to(device).unsqueeze(1).long()
+
+#         optimizer.zero_grad()
+        
+#         net_output = net(inputs)
+#         lambda_ponder = 0.0  
+#         if isinstance(net_output, tuple):
+#             outputs, ponder_cost = net_output
+#             lambda_ponder = 0.01
+#         else:
+#             outputs = net_output
+#             ponder_cost = 0.0
+        
+#         if isinstance(net, (MazeViTUTModel)) and outputs.dim() == 5:
+#             outputs = outputs[-1]
+
+#         B_out, C_out, H_out, W_out = outputs.size()
+#         targets_resized = F.interpolate(targets.float(), size=(H_out, W_out), mode='nearest').long().squeeze(1)
+#         reshaped_outputs = outputs.permute(0, 2, 3, 1).contiguous().view(-1, C_out)
+#         reshaped_targets = targets_resized.view(-1)
+        
+#         ce_loss = criterion(reshaped_outputs, reshaped_targets)
+#         loss = ce_loss + lambda_ponder * ponder_cost
+#         loss.backward()
+#         optimizer.step()
+        
+#         train_loss += loss.item() * reshaped_targets.size(0)
+#         total += reshaped_targets.size(0)
+#         predicted = outputs.argmax(1)
+#         correct += (predicted == targets_resized).sum().item()
+    
+#     train_loss /= total
+#     acc = 100.0 * correct / total
+#     lr_scheduler.step()
+#     warmup_scheduler.dampen()
+
+#     if hasattr(net, "last_num_steps"):
+#         print(f"[Train Epoch] Avg halting steps this epoch: {net.last_num_steps:.2f}")
+#     if hasattr(net, "stopped_at_step"):
+#         print(f"[Train Epoch] Sample stopped_at_step[:10]: {net.stopped_at_step[:10].cpu().tolist()}")
+
+#     return train_loss, acc
 
 
 def train_default(net, trainloader, optimizer_obj, device):
@@ -145,9 +261,17 @@ def train_default(net, trainloader, optimizer_obj, device):
     lr_scheduler = optimizer_obj.scheduler
     warmup_scheduler = optimizer_obj.warmup
     criterion = torch.nn.CrossEntropyLoss(reduction="mean")
-    train_loss, correct, total = 0, 0, 0
     
+    # 통계 계산을 위한 변수 분리
+    train_loss = 0
+    total_pixels = 0  # Loss 정규화용 (전체 픽셀 수)
+    correct_samples = 0 # 샘플 단위 정답 수
+    total_samples = 0   # 전체 샘플 수 (이미지 장수)
+    
+    torch.set_printoptions(profile="full")
+
     for inputs, targets in tqdm(trainloader, leave=False):
+        # targets: [B, 1, H, W]
         inputs, targets = inputs.to(device), targets.to(device).unsqueeze(1).long()
 
         optimizer.zero_grad()
@@ -165,7 +289,11 @@ def train_default(net, trainloader, optimizer_obj, device):
             outputs = outputs[-1]
 
         B_out, C_out, H_out, W_out = outputs.size()
+        
+        # 1. 타겟 리사이즈
         targets_resized = F.interpolate(targets.float(), size=(H_out, W_out), mode='nearest').long().squeeze(1)
+        
+        # 2. Loss 계산용 (픽셀 단위 평탄화)
         reshaped_outputs = outputs.permute(0, 2, 3, 1).contiguous().view(-1, C_out)
         reshaped_targets = targets_resized.view(-1)
         
@@ -174,13 +302,25 @@ def train_default(net, trainloader, optimizer_obj, device):
         loss.backward()
         optimizer.step()
         
+        # 3. Loss 통계 누적 (픽셀 가중 평균을 위해 픽셀 수 곱함)
         train_loss += loss.item() * reshaped_targets.size(0)
-        total += reshaped_targets.size(0)
-        predicted = outputs.argmax(1)
-        correct += (predicted == targets_resized).sum().item()
+        total_pixels += reshaped_targets.size(0)
+        
+        # 4. 정확도 계산 (Sample-wise Exact Match)
+        predicted = outputs.argmax(1) # [B, H, W]
+        
+        # 해당 이미지의 모든 픽셀이 일치해야 True
+        sample_match = (predicted == targets_resized).view(B_out, -1).all(dim=1)
+        
+        correct_samples += sample_match.sum().item()
+        total_samples += B_out
     
-    train_loss /= total
-    acc = 100.0 * correct / total
+    # 5. 최종 결과 산출
+    # Loss는 전체 픽셀 수로 나누어 픽셀당 평균 손실 계산
+    train_loss /= max(1, total_pixels)
+    # Acc는 (완전 일치 이미지 수 / 전체 이미지 수) * 100
+    acc = 100.0 * correct_samples / max(1, total_samples)
+    
     lr_scheduler.step()
     warmup_scheduler.dampen()
 
@@ -204,6 +344,39 @@ def train(net, trainloader, mode, optimizer_obj, device):
 
     return train_func_dict[mode](net, trainloader, optimizer_obj, device)
 
+# def test_default(net, testloader, device):
+#     net.eval()
+#     net.to(device)
+#     correct, total = 0, 0
+    
+#     with torch.no_grad():
+#         for batch_idx, (inputs, targets) in enumerate(testloader):
+#             inputs, targets = inputs.to(device), targets.to(device).unsqueeze(1).long()
+
+#             # 모델 forward
+#             net_output = net(inputs)
+#             lambda_ponder = 0.0  # ACT가 없는 경우에도 에러 안 나게 기본값 설정
+#             # ViT-ACT의 경우 (output, ponder_cost) 형태
+#             if isinstance(net_output, tuple):
+#                 outputs = net_output[0]
+#             else:
+#                 outputs = net_output
+
+#             # UT, ViT 등에서 step별 출력이 쌓여 있을 경우 → 마지막 step 출력 사용
+#             if outputs.dim() == 5:  # [step, B, C, H, W]
+#                 outputs = outputs[-1]
+
+#             B_out, C_out, H_out, W_out = outputs.size()
+#             targets_resized = targets.squeeze(1)  # [B, H, W]
+#             predicted = outputs.argmax(1)         # [B, H, W]
+
+#             correct += (predicted == targets_resized).sum().item()
+#             total += targets_resized.numel()
+
+#     acc = 100.0 * correct / total
+#     return acc
+
+
 def test_default(net, testloader, device):
     net.eval()
     net.to(device)
@@ -215,121 +388,36 @@ def test_default(net, testloader, device):
 
             # 모델 forward
             net_output = net(inputs)
-            lambda_ponder = 0.0  # ACT가 없는 경우에도 에러 안 나게 기본값 설정
-            # ViT-ACT의 경우 (output, ponder_cost) 형태
+            
+            # ViT-ACT의 경우 (output, ponder_cost) 형태 처리
             if isinstance(net_output, tuple):
                 outputs = net_output[0]
             else:
                 outputs = net_output
 
-            # UT, ViT 등에서 step별 출력이 쌓여 있을 경우 → 마지막 step 출력 사용
+            # UT, ViT 등에서 step별 출력이 쌓여 있을 경우 마지막 step 사용
             if outputs.dim() == 5:  # [step, B, C, H, W]
                 outputs = outputs[-1]
 
             B_out, C_out, H_out, W_out = outputs.size()
-            targets_resized = targets.squeeze(1)  # [B, H, W]
-            predicted = outputs.argmax(1)         # [B, H, W]
+            
+            # targets_resized: [B, H, W]
+            targets_resized = targets.squeeze(1) 
+            # predicted: [B, H, W]
+            predicted = outputs.argmax(1)         
 
-            correct += (predicted == targets_resized).sum().item()
-            total += targets_resized.numel()
+            # ======= 정확도 계산 (Sample-wise Exact Match) =======
+            # 각 샘플(B)에 대해 모든 픽셀(H*W)이 일치하는지 확인
+            # .view(B_out, -1)을 통해 픽셀들을 펼친 후 한 이미지 내의 모든(all) 값이 True인지 체크
+            sample_match = (predicted == targets_resized).view(B_out, -1).all(dim=1)
 
-    acc = 100.0 * correct / total
+            correct += sample_match.sum().item() # 완전히 일치한 이미지 개수 누적
+            total += B_out                       # 전체 이미지 장수 누적
+
+    # acc는 (맞춘 이미지 수 / 전체 이미지 수) * 100
+    acc = 100.0 * correct / max(1, total)
     return acc
 
-# def test_default(net, testloader, device, save_dir="./hist_output"):
-#     net.eval()
-#     net.to(device)
-
-#     exact_match = 0
-#     pixel_correct = 0
-#     pixel_total = 0
-#     total = 0
-#     all_stopped_at_steps = []
-
-#     with torch.no_grad():
-#         for batch_idx, (inputs, targets) in enumerate(tqdm(testloader, leave=False)):
-#             inputs = inputs.to(device)
-#             targets = targets.to(device).unsqueeze(1).long()
-#             # print(f"[Step {step}] Mean halting prob p: {p.mean().item():.4f}")
-
-
-#             weighted_output, _ = net(inputs)
-#             predicted = weighted_output.argmax(1)
-
-#             # pixel-level accuracy
-#             pixel_correct += (predicted == targets.squeeze(1)).sum().item()
-#             pixel_total += targets.numel()
-
-#             # sample-level exact match
-#             exact_match += torch.amin(predicted == targets.squeeze(1), dim=[1, 2]).sum().item()
-#             total += targets.size(0)
-
-#             if hasattr(net, "stopped_at_step"):
-#                 all_stopped_at_steps.extend(net.stopped_at_step.cpu().tolist())
-
-#     os.makedirs(save_dir, exist_ok=True)
-#     np.save(os.path.join(save_dir, "halting_steps.npy"), np.array(all_stopped_at_steps))
-
-#     pixel_acc = 100.0 * pixel_correct / pixel_total
-#     sample_acc = 100.0 * exact_match / total
-#     print(f"[Test] Pixel Accuracy: {pixel_acc:.2f}%")
-#     print(f"[Test] Sample-wise Accuracy (exact match): {sample_acc:.2f}%")
-#     if all_stopped_at_steps:
-#         print(f"[Test] Avg halting steps: {np.mean(all_stopped_at_steps):.2f}")
-
-#     return sample_acc
-    
-# def test_default(net, testloader, device):
-#     net.eval()
-#     net.to(device)
-#     correct, total = 0, 0
-    
-#     with torch.no_grad():
-#         for batch_idx, (inputs, targets) in enumerate(testloader):
-#             inputs, targets = inputs.to(device), targets.to(device).unsqueeze(1).long()
-            
-#             outputs = net(inputs)
-            
-#             # For UT models, use the output of the last step (during testing)
-#             if isinstance(net, (MazeUTModel, MazeViTUTModel)) and outputs.dim() == 5:
-#                 outputs = outputs[-1] # Use the result of the last step
-            
-#             B_out, C_out, H_out, W_out = outputs.size()
-
-#             targets_original_dim = targets.squeeze(1) 
-#             predicted = outputs.argmax(1) # (B, H_out, W_out)
-
-#             correct_pixels = (predicted == targets_original_dim).sum().item()
-#             total_pixels = targets_original_dim.numel() 
-
-#             correct += correct_pixels
-#             total += total_pixels
-
-#             # --- Visualization Code ---
-#             if batch_idx % 50 == 0:
-#                 found_correct_sample = False
-#                 found_incorrect_sample = False
-
-#                 for i in range(inputs.size(0)):
-#                     sample_input = inputs.cpu().numpy()[i]
-#                     sample_target = targets_original_dim.cpu().numpy()[i]
-#                     sample_predicted = predicted.cpu().numpy()[i]
-                    
-#                     # Check if the entire sample's prediction is correct
-#                     is_correct_sample = (sample_predicted == sample_target).all()
-
-#                     if not found_correct_sample and is_correct_sample:
-#                         visualize_prediction(sample_input, sample_target, sample_predicted, batch_idx, 'correct')
-#                         found_correct_sample = True
-                    
-#                     if not found_incorrect_sample and not is_correct_sample:
-#                         visualize_prediction(sample_input, sample_target, sample_predicted, batch_idx, 'incorrect')
-#                         found_incorrect_sample = True
-                    
-#                     if found_correct_sample and found_incorrect_sample:
-#                         break # Both types of samples found, move to next batch
-
-#     return 100.0 * correct / total
 
 def test(net, testloader, mode, device):
     test_func_dict = {

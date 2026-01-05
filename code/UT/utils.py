@@ -29,7 +29,6 @@ from torch.utils.data import Dataset, DataLoader, random_split
 from tqdm import tqdm
 from icecream import ic
 
-
 from models.maze_ut import MazeUTModel
 from models.ut_act import MazeUTModelACT
 
@@ -43,26 +42,6 @@ def set_seed(seed=42):
         torch.cuda.manual_seed_all(seed)
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
-
-
-# Ignore statemenst for pylint:
-#     Too many branches (R0912), Too many statements (R0915), No member (E1101),
-#     Not callable (E1102), Invalid name (C0103), No exception (W0702),
-#     Too many local variables (R0914), Missing docstring (C0116, C0115),
-#     Unused import (W0611).
-# pylint: disable=R0912, R0915, E1101, E1102, C0103, W0702, R0914, C0116, C0115, W0611
-
-
-# def get_dataloaders(train_batch_size, test_batch_size, train_maze_size=9, test_maze_size=9, shuffle=True):
-
-#     train_data = MazeDataset("./data", size=train_maze_size, train=True)
-#     test_data = MazeDataset("./data", size=test_maze_size, train=False)
-
-#     trainloader = data.DataLoader(train_data, num_workers=0, batch_size=train_batch_size,
-#                                   shuffle=shuffle, drop_last=True)
-#     testloader = data.DataLoader(test_data, num_workers=0, batch_size=test_batch_size,
-#                                  shuffle=False, drop_last=False)
-#     return trainloader, testloader
 
 
 def pad_to_center(img, target_size=36):
@@ -107,6 +86,10 @@ class NumpyMazeDataset(Dataset):
          # --- 중앙 정렬 패딩 ---
 #         x = pad_to_center(x, target_size=self.target_size)
 #         y = pad_to_center(y, target_size=self.target_size)
+        
+        # 32 x 32가 되도록 padding
+        x = F.pad(x, (4, 4, 4, 4))
+        y = F.pad(y, (4, 4, 4, 4))
         
         return x, y
 
@@ -154,16 +137,16 @@ def get_dataloaders(train_batch_size,
     return trainloader, valloader, testloader
 
 
-def get_model(model, train_size):
+def get_model(model, train_size, dilation):
     """Function to load the Universal Transformer model"""
     model = model.lower()
     size = train_size*2 + 6
 #     size = 36 # 36으로 고정.
     print(f'\n height x width: {size} x {size}\n')
     if model== "maze_ut":
-        return MazeUTModel(input_channels=3, hidden_dim=128, max_steps=4, nhead=4, height=size, width=size)
+        return MazeUTModel(input_channels=3, hidden_dim=128, max_steps=4, nhead=4, height=size, width=size, dilation=dilation)
     elif model=="ut_act":
-        return MazeUTModelACT(input_channels=3, hidden_dim=128, max_steps=10, nhead=4, height=size, width=size, out_channels=2, ponder_epsilon=0.01, time_penalty=0.01)
+        return MazeUTModelACT(input_channels=3, hidden_dim=128, max_steps=10, nhead=4, height=size, width=size, out_channels=2, ponder_epsilon=0.01, time_penalty=0.01, dilation=dilation)
     else:
         raise ValueError(f"Unknown model: {model}")
 
@@ -196,8 +179,8 @@ def get_optimizer(optimizer_name, model, net, lr):
     return optimizer
 
 
-def load_model_from_checkpoint(model, model_path, size):
-    net = get_model(model, size)
+def load_model_from_checkpoint(model, model_path, size, dilation):
+    net = get_model(model, size, dilation)
     device = "cuda" if torch.cuda.is_available() else "cpu"
     state_dict = torch.load(model_path, map_location=device)
     net.load_state_dict(state_dict["net"])
